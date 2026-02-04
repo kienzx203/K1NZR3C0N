@@ -1,0 +1,12 @@
+{
+  "steps": {
+    "subfinder": {
+      "outputs": {
+        "subs_file": "/mnt/f/web/web/K1NZR3C0N/runs/example.com/latest/subs.txt"
+      },
+      "skipped": false,
+      "status": "running",
+      "updated_at": "2026-02-04 22:43:07"
+    }
+  }
+}

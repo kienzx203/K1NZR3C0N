@@ -1,0 +1,25 @@
+name: recon-basic
+vars:
+  httpx_bin: /home/k1nzx/go/bin/httpx
+steps:
+  - id: subfinder
+    name: subdomain enumeration
+    run: 'subfinder -d {target} -silent -o {workspace}/subs.txt'
+    outputs:
+      subs_file: '{workspace}/subs.txt'
+    requires:
+      - path: '{workspace}/subs.txt'
+        min_bytes: 1
+  - id: httpx
+    name: http probe
+    depends_on: ['subfinder']
+    run: '{httpx_bin} -l {steps.subfinder.subs_file} -silent -o {workspace}/alive.txt'
+    outputs:
+      alive_file: '{workspace}/alive.txt'
+    requires:
+      - path: '{workspace}/alive.txt'
+        min_bytes: 1
+  - id: nuclei
+    name: vuln scan
+    depends_on: ['httpx']
+    run: 'nuclei -l {steps.httpx.alive_file} -o {workspace}/nuclei.txt'

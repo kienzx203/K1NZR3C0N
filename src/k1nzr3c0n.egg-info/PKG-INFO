@@ -1,0 +1,70 @@
+Metadata-Version: 2.4
+Name: k1nzr3c0n
+Version: 0.1.0
+Summary: Workflow runner for security scanning
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: PyYAML>=6.0
+
+# K1NZR3C0N
+
+Minimal workflow runner for security scanning workflows (Osmedeus-like).
+Use only on assets you own or have explicit permission to test.
+
+## Requirements
+- Python 3.11+
+- Tools in PATH (optional): subfinder, httpx, nuclei
+
+## Quickstart
+```bash
+pip install -r requirements.txt
+python -m k1nzr3c0n run -w workflows/recon-basic.yaml -t example.com
+```
+
+Outputs are written to `runs/<target>/<timestamp>` by default.
+
+## Workflow format (YAML)
+- `steps` is an ordered list
+- `id` is required and must be unique
+- `run` is a shell command template
+- `depends_on` controls ordering
+- `outputs` exposes paths for later steps
+- `requires` validates that files exist after the step (optional)
+- `run_on_failed_deps` allows running even if a dependency failed (default false)
+
+Example:
+```yaml
+name: recon-basic
+steps:
+  - id: subfinder
+    run: 'subfinder -d {target} -silent -o {workspace}/subs.txt'
+    outputs:
+      subs_file: '{workspace}/subs.txt'
+    requires:
+      - path: '{workspace}/subs.txt'
+        min_bytes: 1
+  - id: httpx
+    depends_on: ['subfinder']
+    run: 'httpx -l {steps.subfinder.subs_file} -silent -o {workspace}/alive.txt'
+    outputs:
+      alive_file: '{workspace}/alive.txt'
+    requires:
+      - path: '{workspace}/alive.txt'
+        min_bytes: 1
+```
+
+## CLI
+- `run` is the main command
+- `--print-plan` prints resolved commands
+- `--vars key=value` overrides workflow vars
+- `--resume` continues from an existing workspace (requires `--out`)
+
+Example:
+```bash
+python -m k1nzr3c0n run -w workflows/recon-basic.yaml -t example.com --print-plan
+```
+
+Resume example:
+```bash
+python -m k1nzr3c0n run -w workflows/recon-discovery.yaml -t example.com --out runs/example.com/latest --resume
+```

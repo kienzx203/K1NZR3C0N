@@ -1,0 +1,2 @@
+[console_scripts]
+k1nzr3c0n = k1nzr3c0n.cli:main

@@ -1,0 +1,10 @@
+[project]
+name = 'k1nzr3c0n'
+version = '0.1.0'
+description = 'Workflow runner for security scanning'
+readme = 'README.md'
+requires-python = '>=3.11'
+dependencies = ['PyYAML>=6.0']
+
+[project.scripts]
+k1nzr3c0n = 'k1nzr3c0n.cli:main'
