@@ -23,6 +23,17 @@ steps:
       - path: '<path-template>'
         min_bytes: <số-byte-tối-thiểu>
     skip_if_exists: <true|false>
+    fanout_concurrency: <số-luồng-song-song>
+    fanout_timeout_default: <timeout-mặc-định>
+    fanout:
+      - id: <id-con>
+        run: '<lệnh-shell>'
+        outputs:
+          <key>: '<path-template>'
+        requires:
+          - path: '<path-template>'
+            min_bytes: <số-byte-tối-thiểu>
+        skip_if_exists: <true|false>
     retries: <số-lần-thử-lại>
     timeout: <giây>
     cwd: <thư-mục-làm-việc>
@@ -98,6 +109,20 @@ Số lần retry nếu step fail. Mặc định `0`.
 Nếu `true`, step sẽ bị skip khi output đã tồn tại và hợp lệ (dựa vào `requires` hoặc `outputs`).
 Kết hợp tốt với `--resume` khi bạn muốn tiếp tục chạy dở.
 
+#### `fanout` (list, optional)
+Cho phép chạy nhiều tool **song song** trong cùng một step. Mỗi item trong `fanout` có cấu trúc giống một step con (`id`, `run`, `outputs`, `requires`, `skip_if_exists`, ...).
+
+Lưu ý:
+- Khi `fanout` tồn tại, **không dùng** `run` ở step cha.
+- Output của fanout có thể tham chiếu theo dạng `{steps.<id_step>.<id_con>.<output_key>}`.
+
+#### `fanout_concurrency` (int, optional)
+Giới hạn số lượng tool chạy song song trong `fanout`. Mặc định min(4, số tool).
+
+#### `fanout_timeout_default` (int|float|string, optional)
+Timeout mặc định cho mọi tool trong `fanout` nếu tool con không khai báo `timeout`.
+Hỗ trợ định dạng `30`, `45s`, `2m`, `1h`.
+
 #### `timeout` (float|int, optional)
 Timeout cho lệnh (giây). Mặc định không giới hạn.
 
@@ -124,6 +149,13 @@ Các placeholder có thể dùng trong `run`, `outputs`, `requires`, `cwd`, `env
 - `{timestamp}`: thời gian chạy dạng `YYYYMMDD-HHMMSS`
 - `{vars.<key>}`: biến từ `vars`
 - `{steps.<id>.<output_key>}`: output đã khai báo của step trước
+- `{steps.<id_step>.<id_con>.<output_key>}`: output của fanout
+
+## Timeout
+`timeout` hỗ trợ số giây hoặc chuỗi có hậu tố:
+- `30` hoặc `30s` = 30 giây
+- `2m` = 120 giây
+- `1h` = 3600 giây
 
 ## Ví dụ workflow cơ bản
 ```yaml

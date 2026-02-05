@@ -44,6 +44,43 @@ steps:
     requires:
       - path: '{workspace}/alive.txt'
         min_bytes: 1
+  - id: nuclei
+    depends_on: ['httpx']
+    run: 'nuclei -l {steps.httpx.alive_file} -jsonl -o {workspace}/nuclei.jsonl'
+    outputs:
+      nuclei_jsonl: '{workspace}/nuclei.jsonl'
+    requires:
+      - path: '{workspace}/nuclei.jsonl'
+        min_bytes: 1
+  - id: nuclei_report
+    depends_on: ['nuclei']
+    run: 'python scripts/nuclei_report.py --input {steps.nuclei.nuclei_jsonl} --out {workspace}/nuclei_report'
+    outputs:
+      nuclei_summary: '{workspace}/nuclei_report/summary.md'
+    requires:
+      - path: '{workspace}/nuclei_report/summary.md'
+        min_bytes: 1
+```
+
+Fanout example (run multiple tools in one step):
+```yaml
+- id: fingerprint
+  depends_on: ['httpx']
+  fanout_concurrency: 3
+  fanout_timeout_default: 2m
+  fanout:
+    - id: whatweb
+      run: 'whatweb https://{target} --log-brief={workspace}/whatweb.txt'
+      outputs:
+        file: '{workspace}/whatweb.txt'
+    - id: wappalyzer
+      run: 'wappalyzer https://{target} > {workspace}/wappalyzer.json'
+      outputs:
+        file: '{workspace}/wappalyzer.json'
+    - id: webtech
+      run: 'webtech -u https://{target} -o {workspace}/webtech.json'
+      outputs:
+        file: '{workspace}/webtech.json'
 ```
 
 ## CLI

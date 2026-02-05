@@ -22,4 +22,18 @@ steps:
   - id: nuclei
     name: vuln scan
     depends_on: ['httpx']
-    run: 'nuclei -l {steps.httpx.alive_file} -o {workspace}/nuclei.txt'
+    run: 'nuclei -l {steps.httpx.alive_file} -jsonl -o {workspace}/nuclei.jsonl'
+    outputs:
+      nuclei_jsonl: '{workspace}/nuclei.jsonl'
+    requires:
+      - path: '{workspace}/nuclei.jsonl'
+        min_bytes: 1
+  - id: nuclei_report
+    name: nuclei report
+    depends_on: ['nuclei']
+    run: 'python scripts/nuclei_report.py --input {steps.nuclei.nuclei_jsonl} --out {workspace}/nuclei_report'
+    outputs:
+      nuclei_summary: '{workspace}/nuclei_report/summary.md'
+    requires:
+      - path: '{workspace}/nuclei_report/summary.md'
+        min_bytes: 1

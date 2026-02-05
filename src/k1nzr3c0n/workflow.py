@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import re
@@ -66,9 +67,20 @@ def load_workflow(path: Path) -> dict[str, Any]:
             raise WorkflowError(f'Duplicate step id: {step_id}')
         seen.add(step_id)
 
+        fanout = step.get('fanout', None)
+        if fanout is not None:
+            if not isinstance(fanout, list) or not fanout:
+                raise WorkflowError(f"Step '{step_id}' has invalid fanout.")
         run_cmd = step.get('run')
+        if fanout is not None and run_cmd is not None:
+            if not isinstance(run_cmd, str):
+                raise WorkflowError(f"Step '{step_id}' has invalid run.")
+            raise WorkflowError(
+                f"Step '{step_id}' cannot define 'run' when using fanout."
+            )
         if not run_cmd or not isinstance(run_cmd, str):
-            raise WorkflowError(f"Step '{step_id}' missing valid run.")
+            if fanout is None:
+                raise WorkflowError(f"Step '{step_id}' missing valid run.")
 
         depends = step.get('depends_on', [])
         if depends is None:
@@ -129,6 +141,123 @@ def load_workflow(path: Path) -> dict[str, Any]:
             raise WorkflowError(f"Step '{step_id}' has invalid requires entry.")
         step['requires'] = normalized
 
+        fanout_concurrency = step.get('fanout_concurrency', None)
+        if fanout_concurrency is not None:
+            try:
+                fanout_concurrency = int(fanout_concurrency)
+            except (TypeError, ValueError) as exc:
+                raise WorkflowError(
+                    f"Step '{step_id}' has invalid fanout_concurrency."
+                ) from exc
+            if fanout_concurrency < 1:
+                raise WorkflowError(
+                    f"Step '{step_id}' fanout_concurrency must be >= 1."
+                )
+        step['fanout_concurrency'] = fanout_concurrency
+
+        fanout_timeout_default = step.get('fanout_timeout_default', None)
+        if fanout_timeout_default is not None and not isinstance(
+            fanout_timeout_default, (int, float, str)
+        ):
+            raise WorkflowError(
+                f"Step '{step_id}' has invalid fanout_timeout_default."
+            )
+        step['fanout_timeout_default'] = fanout_timeout_default
+
+        if fanout is not None:
+            child_seen: set[str] = set()
+            normalized_fanout: list[dict[str, Any]] = []
+            for child_idx, child in enumerate(fanout, start=1):
+                if not isinstance(child, dict):
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout item #{child_idx} must be a mapping."
+                    )
+                child_id = child.get('id')
+                if not child_id or not isinstance(child_id, str):
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout item #{child_idx} missing valid id."
+                    )
+                if child_id in child_seen:
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout duplicate id: {child_id}"
+                    )
+                child_seen.add(child_id)
+
+                child_run = child.get('run')
+                if not child_run or not isinstance(child_run, str):
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' missing valid run."
+                    )
+                if child.get('depends_on') is not None:
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' cannot use depends_on."
+                    )
+                child['depends_on'] = []
+
+                retries = child.get('retries', 0)
+                if retries is None:
+                    retries = 0
+                try:
+                    child['retries'] = int(retries)
+                except (TypeError, ValueError) as exc:
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' has invalid retries."
+                    ) from exc
+
+                skip_if_exists = child.get('skip_if_exists', False)
+                if not isinstance(skip_if_exists, bool):
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' has invalid skip_if_exists."
+                    )
+                child['skip_if_exists'] = skip_if_exists
+
+                run_on_failed_deps = child.get('run_on_failed_deps', False)
+                if not isinstance(run_on_failed_deps, bool):
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' has invalid run_on_failed_deps."
+                    )
+                child['run_on_failed_deps'] = run_on_failed_deps
+
+                requires = child.get('requires', [])
+                if requires is None:
+                    requires = []
+                if isinstance(requires, (str, dict)):
+                    requires = [requires]
+                if not isinstance(requires, list):
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' has invalid requires."
+                    )
+                normalized_child: list[dict[str, Any]] = []
+                for item in requires:
+                    if isinstance(item, str):
+                        normalized_child.append({'path': item, 'min_bytes': 0})
+                        continue
+                    if isinstance(item, dict):
+                        path_value = item.get('path')
+                        if not path_value or not isinstance(path_value, str):
+                            raise WorkflowError(
+                                f"Step '{step_id}' fanout '{child_id}' requires entries "
+                                "must include string path."
+                            )
+                        min_bytes = item.get('min_bytes', 0)
+                        if min_bytes is None:
+                            min_bytes = 0
+                        try:
+                            min_bytes = int(min_bytes)
+                        except (TypeError, ValueError) as exc:
+                            raise WorkflowError(
+                                f"Step '{step_id}' fanout '{child_id}' has invalid requires.min_bytes."
+                            ) from exc
+                        normalized_child.append({'path': path_value, 'min_bytes': min_bytes})
+                        continue
+                    raise WorkflowError(
+                        f"Step '{step_id}' fanout '{child_id}' has invalid requires entry."
+                    )
+                child['requires'] = normalized_child
+
+                normalized_fanout.append(child)
+            step['fanout'] = normalized_fanout
+
     data['steps'] = steps
 
     return data
@@ -156,6 +285,37 @@ def render_template(template: str, ctx: dict[str, Any]) -> str:
         return str(value)
 
     return _PLACEHOLDER.sub(repl, template)
+
+
+def _parse_timeout(value: Any, *, label: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        timeout = float(value)
+    elif isinstance(value, str):
+        raw = value.strip().lower()
+        if not raw:
+            return None
+        unit = raw[-1]
+        if unit in ('s', 'm', 'h'):
+            num = raw[:-1].strip()
+        else:
+            unit = ''
+            num = raw
+        try:
+            timeout = float(num)
+        except ValueError as exc:
+            raise WorkflowError(f'{label} has invalid timeout.') from exc
+        if unit == 'm':
+            timeout *= 60
+        elif unit == 'h':
+            timeout *= 3600
+    else:
+        raise WorkflowError(f'{label} has invalid timeout type.')
+
+    if timeout <= 0:
+        raise WorkflowError(f'{label} timeout must be > 0.')
+    return timeout
 
 
 def topological_order(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -379,6 +539,170 @@ def run_workflow(
             ctx['status'][step_id] = 'skipped'
             continue
 
+        fanout = step.get('fanout')
+        if fanout:
+            ctx['steps'][step_id] = {}
+
+            if print_plan:
+                for child in fanout:
+                    child_id = child['id']
+                    child_outputs = {
+                        key: render_template(str(value), ctx)
+                        for key, value in (child.get('outputs') or {}).items()
+                    }
+                    ctx['steps'][step_id][child_id] = child_outputs
+                    child_cmd = render_template(child['run'], ctx)
+                    print(f'{step_id}.{child_id}: {child_cmd}')
+                ctx['status'][step_id] = 'planned'
+                continue
+
+            tasks: list[dict[str, Any]] = []
+            for child in fanout:
+                child_id = child['id']
+                composite_id = f'{step_id}.{child_id}'
+                child_outputs = {
+                    key: render_template(str(value), ctx)
+                    for key, value in (child.get('outputs') or {}).items()
+                }
+                ctx['steps'][step_id][child_id] = child_outputs
+
+                existing_status = None
+                if resume:
+                    existing_status = (
+                        resume_data.get('steps', {}).get(composite_id, {}).get('status')
+                    )
+
+                should_skip = False
+                if child.get('skip_if_exists', False) or existing_status == 'ok':
+                    if child.get('requires'):
+                        should_skip = _check_requires(child.get('requires', []), ctx)
+                    else:
+                        should_skip = _check_outputs(child_outputs, ctx)
+
+                if should_skip:
+                    warn(f'Skipping {composite_id} (already completed)')
+                    ctx['status'][composite_id] = 'skipped'
+                    if resume:
+                        _record_resume(
+                            resume_data,
+                            composite_id,
+                            'ok',
+                            child_outputs,
+                            skipped=True,
+                        )
+                        _save_resume(resume_path, resume_data)
+                    continue
+
+                command = render_template(child['run'], ctx)
+                _warn_missing_tool(command)
+                env = os.environ.copy()
+                for key, value in (child.get('env') or {}).items():
+                    env[key] = render_template(str(value), ctx)
+
+                cwd_value = child.get('cwd')
+                if cwd_value:
+                    cwd_rendered = render_template(str(cwd_value), ctx)
+                    cwd_path = Path(cwd_rendered)
+                    if not cwd_path.is_absolute():
+                        cwd_path = workspace / cwd_path
+                else:
+                    cwd_path = workspace
+                cwd_path.mkdir(parents=True, exist_ok=True)
+
+                timeout_value = child.get('timeout', None)
+                if timeout_value is None:
+                    timeout_value = step.get('fanout_timeout_default', None)
+                timeout = _parse_timeout(
+                    timeout_value,
+                    label=f"Step '{step_id}' fanout '{child_id}'",
+                )
+
+                tasks.append(
+                    {
+                        'key': composite_id,
+                        'command': command,
+                        'env': env,
+                        'cwd': cwd_path,
+                        'timeout': timeout,
+                        'retries': child.get('retries', 0),
+                        'requires': child.get('requires', []),
+                        'outputs': child_outputs,
+                    }
+                )
+
+            if not tasks:
+                ctx['status'][step_id] = 'skipped'
+                if resume:
+                    _record_resume(resume_data, step_id, 'ok', {}, skipped=True)
+                    _save_resume(resume_path, resume_data)
+                continue
+
+            if resume:
+                for task in tasks:
+                    _record_resume(resume_data, task['key'], 'running', task['outputs'])
+                _save_resume(resume_path, resume_data)
+
+            max_workers = step.get('fanout_concurrency') or min(len(tasks), 4)
+            failed_items: list[str] = []
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(
+                        _run_command,
+                        task['command'],
+                        task['cwd'],
+                        task['env'],
+                        task['timeout'],
+                        task['retries'],
+                    ): task
+                    for task in tasks
+                }
+                for future in as_completed(futures):
+                    task = futures[future]
+                    ok = future.result()
+                    if ok and not _check_requires(task['requires'], ctx):
+                        ok = False
+
+                    if ok:
+                        ctx['status'][task['key']] = 'ok'
+                        if resume:
+                            _record_resume(resume_data, task['key'], 'ok', task['outputs'])
+                    else:
+                        ctx['status'][task['key']] = 'failed'
+                        failed_items.append(task['key'])
+                        if resume:
+                            _record_resume(
+                                resume_data,
+                                task['key'],
+                                'failed',
+                                task['outputs'],
+                                message=f'Failed: {task["key"]}',
+                            )
+                    if resume:
+                        _save_resume(resume_path, resume_data)
+
+            if failed_items:
+                ctx['status'][step_id] = 'failed'
+                if resume:
+                    _record_resume(
+                        resume_data,
+                        step_id,
+                        'failed',
+                        {},
+                        message=f'Fanout failed: {", ".join(failed_items)}',
+                    )
+                    _save_resume(resume_path, resume_data)
+                if not continue_on_error:
+                    raise WorkflowError(
+                        f"Fanout step failed: {step_id} ({', '.join(failed_items)})"
+                    )
+            else:
+                ctx['status'][step_id] = 'ok'
+                if resume:
+                    _record_resume(resume_data, step_id, 'ok', {})
+                    _save_resume(resume_path, resume_data)
+
+            continue
+
         command = render_template(step['run'], ctx)
         outputs = {
             key: render_template(str(value), ctx)
@@ -419,14 +743,7 @@ def run_workflow(
         cwd_path.mkdir(parents=True, exist_ok=True)
 
         timeout_value = step.get('timeout', None)
-        timeout: float | None
-        if timeout_value is None:
-            timeout = None
-        else:
-            try:
-                timeout = float(timeout_value)
-            except (TypeError, ValueError) as exc:
-                raise WorkflowError(f"Step '{step_id}' has invalid timeout.") from exc
+        timeout = _parse_timeout(timeout_value, label=f"Step '{step_id}'")
 
         if print_plan:
             print(command)
