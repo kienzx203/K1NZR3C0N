@@ -1,0 +1,8 @@
+- [kienzx203/acunetix23](https://github.com/kienzx203/acunetix23)
+
+- [kienzx203/nessus_oneclick](https://github.com/kienzx203/nessus_oneclick)
+
+- [xm1k3/cent: Community edition nuclei templates, a simple tool that allows you to organize all the Nuclei templates offered by the community in one place](https://github.com/xm1k3/cent)
+- [https://github.com/zan8in/afrog](https://www.notion.so/https-github-com-zan8in-afrog-1739039973708043b3fbf8158340d029?pvs=21)
+
+- [projectdiscovery/nuclei: Nuclei is a fast, customizable vulnerability scanner powered by the global security community and built on a simple YAML-based DSL, enabling collaboration to tackle trending vulnerabilities on the internet. It helps you find vulnerabilities in your applications, APIs, networks, DNS, and cloud configurations.](https://github.com/projectdiscovery/nuclei)

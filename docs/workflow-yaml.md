@@ -40,6 +40,10 @@ steps:
     env:
       <ENV_KEY>: '<value-template>'
     run_on_failed_deps: <true|false>
+  - id: <id-gọi-workflow>
+    workflow: <đường-dẫn-workflow-khác>
+    namespace: <tiền-tố-namespace>
+    depends_on: [<id-bước-khác>]
 ```
 
 ## Các trường chi tiết
@@ -123,6 +127,18 @@ Giới hạn số lượng tool chạy song song trong `fanout`. Mặc định m
 Timeout mặc định cho mọi tool trong `fanout` nếu tool con không khai báo `timeout`.
 Hỗ trợ định dạng `30`, `45s`, `2m`, `1h`.
 
+#### `workflow` (string, optional)
+Cho phép gọi một workflow YAML khác và **nhúng** các step vào workflow hiện tại.
+Khi dùng `workflow`, step cha **không** được khai báo `run` hoặc `fanout`.
+`vars` của workflow con sẽ được merge như **giá trị mặc định** (nếu parent chưa có key đó).
+
+#### `namespace` (string, optional)
+Tiền tố namespace cho các step của workflow con. Mặc định là `id` của step gọi.
+Tất cả step của workflow con sẽ được đổi id thành `<namespace>.<id_con>`.
+
+#### `depends_on` với workflow include
+Nếu step gọi workflow có `depends_on`, các dependency đó sẽ được áp vào **mọi step con**.
+
 #### `timeout` (float|int, optional)
 Timeout cho lệnh (giây). Mặc định không giới hạn.
 
@@ -150,12 +166,27 @@ Các placeholder có thể dùng trong `run`, `outputs`, `requires`, `cwd`, `env
 - `{vars.<key>}`: biến từ `vars`
 - `{steps.<id>.<output_key>}`: output đã khai báo của step trước
 - `{steps.<id_step>.<id_con>.<output_key>}`: output của fanout
+- Với include workflow, tham chiếu sẽ là `{steps.<namespace>.<id_con>.<output_key>}`
 
 ## Timeout
 `timeout` hỗ trợ số giây hoặc chuỗi có hậu tố:
 - `30` hoặc `30s` = 30 giây
 - `2m` = 120 giây
 - `1h` = 3600 giây
+
+## Include workflow
+Ví dụ gọi workflow con:
+```yaml
+- id: recon_child
+  workflow: workflows/recon-basic.yaml
+  namespace: child
+  depends_on: ['subfinder']
+```
+
+Sau include, bạn có thể tham chiếu output của workflow con như:
+```
+{steps.child.httpx.alive_file}
+```
 
 ## Ví dụ workflow cơ bản
 ```yaml

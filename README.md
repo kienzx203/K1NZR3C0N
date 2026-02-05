@@ -83,6 +83,13 @@ Fanout example (run multiple tools in one step):
         file: '{workspace}/webtech.json'
 ```
 
+Include workflow example:
+```yaml
+- id: recon_child
+  workflow: workflows/recon-basic.yaml
+  namespace: child
+```
+
 ## CLI
 - `run` is the main command
 - `--print-plan` prints resolved commands

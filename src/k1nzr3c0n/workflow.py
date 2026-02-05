@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import copy
 import json
 import os
 import re
@@ -42,7 +43,13 @@ def parse_var_overrides(items: list[str]) -> dict[str, str]:
     return overrides
 
 
-def load_workflow(path: Path) -> dict[str, Any]:
+def load_workflow(path: Path, stack: list[Path] | None = None) -> dict[str, Any]:
+    path = path.resolve()
+    if stack is None:
+        stack = []
+    if path in stack:
+        chain = ' -> '.join(str(item) for item in stack + [path])
+        raise WorkflowError(f'Workflow include cycle detected: {chain}')
     if not path.exists():
         raise WorkflowError(f'Workflow not found: {path}')
 
@@ -51,9 +58,79 @@ def load_workflow(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise WorkflowError('Workflow must be a YAML mapping at top level.')
 
+    vars_data = data.get('vars', {})
+    if vars_data is None:
+        vars_data = {}
+    if not isinstance(vars_data, dict):
+        raise WorkflowError("Workflow 'vars' must be a mapping.")
+    merged_vars = dict(vars_data)
+
     steps = data.get('steps')
     if not isinstance(steps, list) or not steps:
         raise WorkflowError("Workflow must contain a non-empty 'steps' list.")
+
+    expanded_steps: list[dict[str, Any]] = []
+    for idx, step in enumerate(steps, start=1):
+        if not isinstance(step, dict):
+            raise WorkflowError(f'Step #{idx} must be a mapping.')
+
+        if 'workflow' in step:
+            step_id = step.get('id')
+            if not step_id or not isinstance(step_id, str):
+                raise WorkflowError(f'Step #{idx} missing valid id.')
+            if step.get('run') is not None or step.get('fanout') is not None:
+                raise WorkflowError(
+                    f"Step '{step_id}' cannot define run/fanout when using workflow."
+                )
+            workflow_path = step.get('workflow')
+            if not workflow_path or not isinstance(workflow_path, str):
+                raise WorkflowError(f"Step '{step_id}' missing valid workflow path.")
+            namespace = step.get('namespace', step_id)
+            if not namespace or not isinstance(namespace, str):
+                raise WorkflowError(f"Step '{step_id}' has invalid namespace.")
+
+            depends = step.get('depends_on', [])
+            if depends is None:
+                depends = []
+            if isinstance(depends, str):
+                depends = [depends]
+            if not isinstance(depends, list) or any(
+                not isinstance(x, str) for x in depends
+            ):
+                raise WorkflowError(f"Step '{step_id}' has invalid depends_on.")
+
+            child_path = Path(workflow_path)
+            if not child_path.is_absolute():
+                child_path = path.parent / child_path
+            child_data = load_workflow(child_path, stack + [path])
+            child_steps = child_data.get('steps') or []
+
+            for key, value in (child_data.get('vars') or {}).items():
+                if key not in merged_vars:
+                    merged_vars[key] = value
+
+            id_map = {child['id']: f'{namespace}.{child["id"]}' for child in child_steps}
+
+            for child in child_steps:
+                new_step = copy.deepcopy(child)
+                old_id = new_step['id']
+                new_step['id'] = id_map[old_id]
+                child_depends = new_step.get('depends_on', [])
+                if child_depends is None:
+                    child_depends = []
+                if isinstance(child_depends, str):
+                    child_depends = [child_depends]
+                new_depends = [id_map.get(d, d) for d in child_depends]
+                new_depends.extend(depends)
+                new_step['depends_on'] = new_depends
+                new_step = _rewrite_templates_in_obj(new_step, id_map)
+                expanded_steps.append(new_step)
+            continue
+
+        expanded_steps.append(step)
+
+    steps = expanded_steps
+    data['vars'] = merged_vars
 
     seen: set[str] = set()
     for idx, step in enumerate(steps, start=1):
@@ -318,6 +395,49 @@ def _parse_timeout(value: Any, *, label: str) -> float | None:
     return timeout
 
 
+def _set_step_outputs(ctx: dict[str, Any], step_id: str, outputs: Any) -> None:
+    current = ctx.setdefault('steps', {})
+    parts = step_id.split('.')
+    for part in parts[:-1]:
+        node = current.get(part)
+        if not isinstance(node, dict):
+            node = {}
+            current[part] = node
+        current = node
+    current[parts[-1]] = outputs
+
+
+def _ensure_step_container(ctx: dict[str, Any], step_id: str) -> dict[str, Any]:
+    current = ctx.setdefault('steps', {})
+    parts = step_id.split('.')
+    for part in parts:
+        node = current.get(part)
+        if not isinstance(node, dict):
+            node = {}
+            current[part] = node
+        current = node
+    return current
+
+
+def _rewrite_step_refs_in_str(text: str, id_map: dict[str, str]) -> str:
+    if not id_map:
+        return text
+    keys = sorted(id_map.keys(), key=len, reverse=True)
+    for key in keys:
+        text = text.replace(f'{{steps.{key}.', f'{{steps.{id_map[key]}.')
+    return text
+
+
+def _rewrite_templates_in_obj(value: Any, id_map: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return _rewrite_step_refs_in_str(value, id_map)
+    if isinstance(value, list):
+        return [_rewrite_templates_in_obj(item, id_map) for item in value]
+    if isinstance(value, dict):
+        return {key: _rewrite_templates_in_obj(val, id_map) for key, val in value.items()}
+    return value
+
+
 def topological_order(steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id = {step['id']: step for step in steps}
     index = {step['id']: i for i, step in enumerate(steps)}
@@ -541,7 +661,7 @@ def run_workflow(
 
         fanout = step.get('fanout')
         if fanout:
-            ctx['steps'][step_id] = {}
+            fanout_container = _ensure_step_container(ctx, step_id)
 
             if print_plan:
                 for child in fanout:
@@ -550,7 +670,7 @@ def run_workflow(
                         key: render_template(str(value), ctx)
                         for key, value in (child.get('outputs') or {}).items()
                     }
-                    ctx['steps'][step_id][child_id] = child_outputs
+                    fanout_container[child_id] = child_outputs
                     child_cmd = render_template(child['run'], ctx)
                     print(f'{step_id}.{child_id}: {child_cmd}')
                 ctx['status'][step_id] = 'planned'
@@ -564,7 +684,7 @@ def run_workflow(
                     key: render_template(str(value), ctx)
                     for key, value in (child.get('outputs') or {}).items()
                 }
-                ctx['steps'][step_id][child_id] = child_outputs
+                fanout_container[child_id] = child_outputs
 
                 existing_status = None
                 if resume:
@@ -722,7 +842,7 @@ def run_workflow(
 
         if should_skip:
             warn(f'Skipping {step_id} (already completed)')
-            ctx['steps'][step_id] = outputs
+            _set_step_outputs(ctx, step_id, outputs)
             ctx['status'][step_id] = 'skipped'
             if resume:
                 _record_resume(resume_data, step_id, 'ok', outputs, skipped=True)
@@ -747,7 +867,7 @@ def run_workflow(
 
         if print_plan:
             print(command)
-            ctx['steps'][step_id] = outputs
+            _set_step_outputs(ctx, step_id, outputs)
             ctx['status'][step_id] = 'planned'
             continue
 
@@ -763,7 +883,7 @@ def run_workflow(
             timeout=timeout,
             retries=step.get('retries', 0),
         )
-        ctx['steps'][step_id] = outputs
+        _set_step_outputs(ctx, step_id, outputs)
         if ok and not _check_requires(step.get('requires', []), ctx):
             ok = False
 

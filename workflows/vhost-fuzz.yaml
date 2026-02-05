@@ -1,0 +1,24 @@
+name: vhost-fuzz
+vars:
+  gobuster_wordlist: /home/k1nzx/SecLists/Discovery/DNS/subdomains-top1million-110000.txt
+  ffuf_wordlist: /home/k1nzx/SecLists/Discovery/DNS/subdomains-top1million-110000.txt
+steps:
+  - id: vhost_fuzz
+    name: vhost fuzzing (gobuster + ffuf)
+    fanout_concurrency: 2
+    fanout_timeout_default: 10m
+    fanout:
+      - id: gobuster
+        run: 'gobuster vhost -u http://{target} -w {vars.gobuster_wordlist} --append-domain -o {workspace}/gobuster_vhost.txt'
+        outputs:
+          file: '{workspace}/gobuster_vhost.txt'
+        requires:
+          - path: '{workspace}/gobuster_vhost.txt'
+            min_bytes: 0
+      - id: ffuf
+        run: 'ffuf -w {vars.ffuf_wordlist} -u http://{target} -H "Host: FUZZ.{target}" -fs 120 -o {workspace}/ffuf_vhost.json'
+        outputs:
+          file: '{workspace}/ffuf_vhost.json'
+        requires:
+          - path: '{workspace}/ffuf_vhost.json'
+            min_bytes: 0

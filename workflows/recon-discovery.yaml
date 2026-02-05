@@ -1,11 +1,11 @@
 name: recon-discovery
 vars:
-  wordlists: /mnt/f/web/web/TOOL_0x00/wordlist
-  tools_root: /mnt/f/web/web/TOOL_0x00
+  wordlists: /home/k1nzx
+  tools_root: /home/k1nzx
 steps:
   - id: gobuster
     name: gobuster dir brute
-    run: 'gobuster dir -u https://{target} -w {vars.wordlists}/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -mc 200,301,302,500 -fc 404,401,400 -t 50 -o {workspace}/gobuster.txt'
+    run: 'gobuster dir -u https://{target} -w {vars.wordlists}/common.txt -b 404,403,400 -t 50 -o {workspace}/gobuster.txt'
     skip_if_exists: true
     outputs:
       gobuster_file: '{workspace}/gobuster.txt'
@@ -14,7 +14,7 @@ steps:
         min_bytes: 0
   - id: dirsearch
     name: dirsearch
-    run: 'dirsearch -u https://{target} -x 400,401,404,403 -o {workspace}/dirsearch.txt'
+    run: 'dirsearch -u https://{target} -x 400,404,403 -o {workspace}/dirsearch.txt'
     skip_if_exists: true
     outputs:
       dirsearch_file: '{workspace}/dirsearch.txt'
@@ -23,74 +23,16 @@ steps:
         min_bytes: 0
   - id: ffuf_directory
     name: ffuf directory list
-    run: 'ffuf -u https://{target}/FUZZ -w {vars.wordlists}/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -mc 200,301,302,500 -fc 404,401,400 -o {workspace}/ffuf.json'
+    run: 'ffuf -u https://{target}/FUZZ -w {vars.wordlists}/common.txt -mc 200,301,302,500,401 -fc 404,403,400 -o {workspace}/ffuf.json'
     skip_if_exists: true
     outputs:
       ffuf_directory_file: '{workspace}/ffuf.json'
     requires:
       - path: '{workspace}/ffuf.json'
         min_bytes: 0
-  - id: ffuf_common
-    name: ffuf common list
-    run: 'ffuf -u https://{target}/FUZZ -w {vars.wordlists}/SecLists/Discovery/Web-Content/common.txt -mc 200,301,302,500 -fc 404,401,400 -o {workspace}/ffuf1.json'
-    skip_if_exists: true
-    outputs:
-      ffuf_common_file: '{workspace}/ffuf1.json'
-    requires:
-      - path: '{workspace}/ffuf1.json'
-        min_bytes: 0
-  - id: ffuf_swagger
-    name: ffuf swagger list
-    run: 'ffuf -u https://{target}/FUZZ -w {vars.wordlists}/SecLists/Discovery/Web-Content/swagger.txt -mc 200,301,302,500 -fc 404,401,400 -o {workspace}/swagger.json'
-    skip_if_exists: true
-    outputs:
-      ffuf_swagger_file: '{workspace}/swagger.json'
-    requires:
-      - path: '{workspace}/swagger.json'
-        min_bytes: 0
-  - id: ffuf_swagger_apidetector
-    name: ffuf swagger apidetector list
-    run: 'ffuf -u https://{target}/FUZZ -w {vars.wordlists}/swagger_apidetector.txt -mc 200,301,302,500 -fc 404,401,400 -o {workspace}/swagger_apidetector.json'
-    skip_if_exists: true
-    outputs:
-      ffuf_swagger_apidetector_file: '{workspace}/swagger_apidetector.json'
-    requires:
-      - path: '{workspace}/swagger_apidetector.json'
-        min_bytes: 0
-  - id: waybackurls
-    name: waybackurls
-    run: 'echo {target} | waybackurls > {workspace}/waybackurls.txt'
-    skip_if_exists: true
-    outputs:
-      waybackurls_file: '{workspace}/waybackurls.txt'
-    requires:
-      - path: '{workspace}/waybackurls.txt'
-        min_bytes: 0
-  - id: katana
-    name: katana
-    run: 'katana -u https://{target} -o {workspace}/katana.txt'
-    skip_if_exists: true
-    outputs:
-      katana_file: '{workspace}/katana.txt'
-    requires:
-      - path: '{workspace}/katana.txt'
-        min_bytes: 0
-  - id: gospider
-    name: gospider
-    run: 'gospider -d 1 -s https://{target} -o {workspace}/gospider.txt'
-    skip_if_exists: true
-  - id: gau
-    name: gau
-    run: 'gau {target} --o {workspace}/gau.txt'
-    skip_if_exists: true
-    outputs:
-      gau_file: '{workspace}/gau.txt'
-    requires:
-      - path: '{workspace}/gau.txt'
-        min_bytes: 0
   - id: fuzzuli
     name: fuzzuli
-    run: 'echo https://{target} | fuzzuli -mt all > {workspace}/fuzzuli.txt'
+    run: 'export PATH=$PATH:$(go env GOPATH)/bin; echo https://{target} | fuzzuli -mt all > {workspace}/fuzzuli.txt'
     skip_if_exists: true
     outputs:
       fuzzuli_file: '{workspace}/fuzzuli.txt'
@@ -99,19 +41,11 @@ steps:
         min_bytes: 0
   - id: swaggerspy
     name: SwaggerSpy
-    run: 'python {vars.tools_root}/fuzzing/SwaggerSpy/swaggerspy.py {target} > {workspace}/swaggerspy.txt'
+    run: 'python {vars.tools_root}/SwaggerSpy/swaggerspy.py {target} > {workspace}/swaggerspy.txt'
     skip_if_exists: true
     outputs:
       swaggerspy_file: '{workspace}/swaggerspy.txt'
     requires:
       - path: '{workspace}/swaggerspy.txt'
         min_bytes: 0
-  - id: dorks_hunter
-    name: dorks_hunter
-    run: 'python {vars.tools_root}/fuzzing/dorks_hunter/dorks_hunter.py -d {target} -o {workspace}/dorks_hunter.txt'
-    skip_if_exists: true
-    outputs:
-      dorks_hunter_file: '{workspace}/dorks_hunter.txt'
-    requires:
-      - path: '{workspace}/dorks_hunter.txt'
-        min_bytes: 0
+
