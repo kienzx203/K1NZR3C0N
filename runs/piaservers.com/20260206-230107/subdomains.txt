@@ -1,0 +1,14 @@
+blog.piaservers.com
+crashlab.piaservers.com
+crashlab-staging.piaservers.com
+cs-gitlab.piaservers.com
+dev-ok.piaservers.com
+forum.piaservers.com
+offers-lp.piaservers.com
+offers-lp-staging.piaservers.com
+ok.piaservers.com
+*.piaservers.com
+.piaservers.com
+piaservers.com
+staging-ok.piaservers.com
+wl-partner.piaservers.com

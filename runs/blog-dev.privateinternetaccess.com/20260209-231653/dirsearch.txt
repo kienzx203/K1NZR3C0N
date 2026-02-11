@@ -1,0 +1,20 @@
+# Dirsearch started Tue Feb 10 00:07:49 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://blog-dev.privateinternetaccess.com -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/blog-dev.privateinternetaccess.com/20260209-231653/dirsearch.txt
+
+502     6KB  https://blog-dev.privateinternetaccess.com/admin/portalcollect.php?f=http://xxx&t=js
+200     8KB  https://blog-dev.privateinternetaccess.com/blog/wp-login.php
+200    61KB  https://blog-dev.privateinternetaccess.com/blog/
+302     0B   https://blog-dev.privateinternetaccess.com/cs    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+302     0B   https://blog-dev.privateinternetaccess.com/de    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+200     0B   https://blog-dev.privateinternetaccess.com/dev
+302     0B   https://blog-dev.privateinternetaccess.com/es    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+200    12KB  https://blog-dev.privateinternetaccess.com/html/
+302     0B   https://blog-dev.privateinternetaccess.com/it    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+502     6KB  https://blog-dev.privateinternetaccess.com/lol.php
+302     0B   https://blog-dev.privateinternetaccess.com/nl    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+302     0B   https://blog-dev.privateinternetaccess.com/pl    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+302     0B   https://blog-dev.privateinternetaccess.com/ru    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog
+302     0B   https://blog-dev.privateinternetaccess.com/sitemap.xml    -> REDIRECTS TO: https://dev-www.privateinternetaccess.com/blog/wp-sitemap.xml
+502     6KB  https://blog-dev.privateinternetaccess.com/TechnologySamples/PageReturnerservlet/
+502     6KB  https://blog-dev.privateinternetaccess.com/umbraco/webservices/codeEditorSave.asmx
+401    96B   https://blog-dev.privateinternetaccess.com/wp-json/wp/v2/users/
+401    96B   https://blog-dev.privateinternetaccess.com/wp-json/

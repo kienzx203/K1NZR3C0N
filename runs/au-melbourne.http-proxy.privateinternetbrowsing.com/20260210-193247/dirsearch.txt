@@ -1,0 +1,9 @@
+# Dirsearch started Tue Feb 10 19:35:20 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://au-melbourne.http-proxy.privateinternetbrowsing.com -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/au-melbourne.http-proxy.privateinternetbrowsing.com/20260210-193247/dirsearch.txt
+
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/admin/portalcollect.php?f=http://xxx&t=js
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/docpicker/common_proxy/http/www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/sg247798.html?Logout&RedirectTo=http://example.com
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/wps/cmis_proxy/http/www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/sg247798.html?Logout&RedirectTo=http://example.com
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/wps/common_proxy/http/www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/sg247798.html?Logout&RedirectTo=http://example.com
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/wps/myproxy/http/www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/sg247798.html?Logout&RedirectTo=http://example.com
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/wps/contenthandler/!ut/p/digest!8skKFbWr_TwcZcvoc9Dn3g/?uri=http://www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/sg247798.html?Logout&RedirectTo=http://example.com
+407     0B   https://au-melbourne.http-proxy.privateinternetbrowsing.com/wps/proxy/http/www.redbooks.ibm.com/Redbooks.nsf/RedbookAbstracts/sg247798.html?Logout&RedirectTo=http://example.com

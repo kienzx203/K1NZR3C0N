@@ -1,0 +1,17 @@
+/account/            [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/][0m
+/account/login.%EXT% [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.%25EXT%25][0m
+/account/login.jsp   [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.jsp][0m
+/account/login       [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login][0m
+/account/login.htm   [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.htm][0m
+/account/login.shtml [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.shtml][0m
+/account/login.html  [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.html][0m
+/account/login.py    [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.py][0m
+/account/login.rb    [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/login.rb][0m
+/account/signin      [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/signin][0m
+/account/logon       [36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/logon][0m
+/account/client/requested/docs/70844262[36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/client/requested/docs/70844262][0m
+/account/gm/meta/pay_method[36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/gm/meta/pay_method][0m
+/account/gm/meta/game[36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/gm/meta/game][0m
+/account/users/42/metadata[36m (Status: 301)[0m [Size: 167][34m [--> https://email.privateinternetaccess.com/account/users/42/metadata][0m
+/cdn-cgi/trace       [32m (Status: 200)[0m [Size: 211]
+/cdn-cgi/l/email-protection[32m (Status: 200)[0m [Size: 4694]

@@ -30,6 +30,15 @@ steps:
     requires:
       - path: '{workspace}/ffuf.json'
         min_bytes: 0
+  - id: feroxbuster
+    name: feroxbuster recursive discovery
+    run: 'feroxbuster -u https://{target} -o {workspace}/feroxbuster.txt --silent'
+    skip_if_exists: true
+    outputs:
+      feroxbuster_file: '{workspace}/feroxbuster.txt'
+    requires:
+      - path: '{workspace}/feroxbuster.txt'
+        min_bytes: 0
   - id: fuzzuli
     name: fuzzuli
     run: 'export PATH=$PATH:$(go env GOPATH)/bin; echo https://{target} | fuzzuli -mt all > {workspace}/fuzzuli.txt'
@@ -48,4 +57,3 @@ steps:
     requires:
       - path: '{workspace}/swaggerspy.txt'
         min_bytes: 0
-

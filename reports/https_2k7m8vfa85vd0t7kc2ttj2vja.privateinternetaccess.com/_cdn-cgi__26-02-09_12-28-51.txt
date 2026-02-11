@@ -1,0 +1,5 @@
+# Dirsearch started Mon Feb  9 12:29:31 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://2k7m8vfa85vd0t7kc2ttj2vja.privateinternetaccess.com/cdn-cgi/ -x 403,404,400,401
+
+200    43B   https://2k7m8vfa85vd0t7kc2ttj2vja.privateinternetaccess.com/cdn-cgi/ping
+200   356B   https://2k7m8vfa85vd0t7kc2ttj2vja.privateinternetaccess.com/cdn-cgi/trace
+200   355B   https://2k7m8vfa85vd0t7kc2ttj2vja.privateinternetaccess.com/cdn-cgi/trace.json

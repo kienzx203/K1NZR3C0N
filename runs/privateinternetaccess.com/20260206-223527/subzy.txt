@@ -1,0 +1,197 @@
+[ * ] Fingerprints found; checking integrity with an upstream
+[ * ] Loaded 153 targets
+[ * ] Loaded 76 fingerprints
+[ No ] HTTPS by default (--https)
+[ 10 ] Concurrent requests (--concurrency)
+[ No ] Check target only if SSL is valid (--verify_ssl)
+[ 10 ] HTTP request timeout (in seconds) (--timeout)
+[ No ] Show only potentially vulnerable subdomains (--hide_fails)
+[ [31mHTTP ERROR[0m ]  -  *.connectivitycheck.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  5745500.offers.privateinternetaccess.com  [ Cargo Collective ]
+[ [34mDISCUSSION[0m ]  -  [Issue #152](https://github.com/EdOverflow/can-i-take-over-xyz/issues/152)
+[ [34mDOCUMENTATION[0m ]  -  [Cargo Support Page](https://support.2.cargocollective.com/Using-a-Third-Party-Domain)
+-----------------
+-----------------
+[ [32mVULNERABLE[0m ]  -  8670403.link.accounts.privateinternetaccess.com  [ Cargo Collective ]
+[ [34mDISCUSSION[0m ]  -  [Issue #152](https://github.com/EdOverflow/can-i-take-over-xyz/issues/152)
+[ [34mDOCUMENTATION[0m ]  -  [Cargo Support Page](https://support.2.cargocollective.com/Using-a-Third-Party-Domain)
+-----------------
+[ [31mNOT VULNERABLE[0m ]  -  ae.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  api.jwks.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  ara.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  api.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  apiv5.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  apiv2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  au-sydney.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  aus-melbourne.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  assets-cms.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  apiv4.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  2k7m8vfa85vd0t7kc2ttj2vja.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  blog-dev.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  ara-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  bra.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  bra-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  austria.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  admin.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  accounts.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  chi.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  ara-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  cht.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  beta-www.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  bgr-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  clients.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  connectivitycheck.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  bra-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  brussels.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  czech.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  ca-toronto.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  de-berlin.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  chi-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  de-frankfurt.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  deu.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  dev-assets-cms.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  cht-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  ca-vancouver.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  denmark.http-proxy.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  dip.privateinternetaccess.com  [ Cargo Collective ]
+[ [34mDISCUSSION[0m ]  -  [Issue #152](https://github.com/EdOverflow/can-i-take-over-xyz/issues/152)
+[ [34mDOCUMENTATION[0m ]  -  [Cargo Support Page](https://support.2.cargocollective.com/Using-a-Third-Party-Domain)
+-----------------
+[ [31mNOT VULNERABLE[0m ]  -  dnk.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  deu-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  dnsleak-ns.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  email.privateinternetaccess.com  [ Cargo Collective ]
+[ [34mDISCUSSION[0m ]  -  [Issue #152](https://github.com/EdOverflow/can-i-take-over-xyz/issues/152)
+[ [34mDOCUMENTATION[0m ]  -  [Cargo Support Page](https://support.2.cargocollective.com/Using-a-Third-Party-Domain)
+-----------------
+[ [31mHTTP ERROR[0m ]  -  ca-montreal.http-proxy.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  email2.offers.privateinternetaccess.com  [ Uptimerobot ]
+[ [34mDISCUSSION[0m ]  -  [Issue #45](https://github.com/EdOverflow/can-i-take-over-xyz/issues/45)
+[ [34mDOCUMENTATION[0m ]  -  [Uptimerobot-Sub-takeover](https://exploit.linuxsec.org/uptimerobot-com-custom-domain-subdomain-takeover/)
+-----------------
+-----------------
+[ [32mVULNERABLE[0m ]  -  email2.privateinternetaccess.com  [ Uptimerobot ]
+[ [34mDISCUSSION[0m ]  -  [Issue #45](https://github.com/EdOverflow/can-i-take-over-xyz/issues/45)
+[ [34mDOCUMENTATION[0m ]  -  [Uptimerobot-Sub-takeover](https://exploit.linuxsec.org/uptimerobot-com-custom-domain-subdomain-takeover/)
+-----------------
+[ [31mNOT VULNERABLE[0m ]  -  dev-api.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  email2.accounts.privateinternetaccess.com  [ Uptimerobot ]
+[ [34mDISCUSSION[0m ]  -  [Issue #45](https://github.com/EdOverflow/can-i-take-over-xyz/issues/45)
+[ [34mDOCUMENTATION[0m ]  -  [Uptimerobot-Sub-takeover](https://exploit.linuxsec.org/uptimerobot-com-custom-domain-subdomain-takeover/)
+-----------------
+[ [31mNOT VULNERABLE[0m ]  -  dnk-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  files.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  fin-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  fra.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  chi-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  france.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  fra-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  cht-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  cze-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  dev-www.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  deu-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  helpdesk.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  hungary.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  installers.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  dnk-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  fi.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  italy.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  ita.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  fin-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  fra-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  in.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  grc-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  hrv-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  jpn.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  hun-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  jpn-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  kor.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  idn-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  links.news.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  ireland.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  jykagatn6iimtz6iujdy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  kor-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  lu.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  israel.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  mp-feedback.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  mex.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  news.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  nld.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  isr-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  ita-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  mex-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  nld-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  nz.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  nor-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  japan.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  jpn-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  payments.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  poland.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  pol-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  kor-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  mex-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  nld-web2.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  rus.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  sg.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  nor-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  o1.email.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  o9.accounts.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  o10.ptr9576.offers.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-swiss.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-us-dal.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  pol-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  proxy-nl.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  rou-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  rus-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-nl.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  spain.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  staging-2-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-hk.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-japan.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  staging-1-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-us-sea.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  staging-assets-cms.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-jp.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-israel.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  staging-4-77b8e3a311bcb6ec5e96.privateinternetaccess.com  [ Cargo Collective ]
+[ [34mDISCUSSION[0m ]  -  [Issue #152](https://github.com/EdOverflow/can-i-take-over-xyz/issues/152)
+[ [34mDOCUMENTATION[0m ]  -  [Cargo Support Page](https://support.2.cargocollective.com/Using-a-Third-Party-Domain)
+-----------------
+[ [31mNOT VULNERABLE[0m ]  -  staging.api.jwks.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  uk-southampton.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-mexico.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  us-california.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  us-denver.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  staging-5-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  sweden.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  us-lasvegas.http-proxy.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  us-newjersey.http-proxy.privateinternetaccess.com
+-----------------
+[ [32mVULNERABLE[0m ]  -  url4597.link.accounts.privateinternetaccess.com  [ Cargo Collective ]
+[ [34mDISCUSSION[0m ]  -  [Issue #152](https://github.com/EdOverflow/can-i-take-over-xyz/issues/152)
+[ [34mDOCUMENTATION[0m ]  -  [Cargo Support Page](https://support.2.cargocollective.com/Using-a-Third-Party-Domain)
+-----------------
+[ [31mNOT VULNERABLE[0m ]  -  us-houston.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-us-seattle.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  us-florida.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-us-west.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  socks5-ca-vancouver.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  web-master.privateinternetaccess.com
+[ [31mNOT VULNERABLE[0m ]  -  www-staging-3-77b8e3a311bcb6ec5e96.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  swe-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  ukr-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  us-atlanta.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  us-newyorkcity.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  us-seattle.http-proxy.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  virginia.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  virginia-master.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  vnm-web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  web2.privateinternetaccess.com
+[ [31mHTTP ERROR[0m ]  -  www-web2.privateinternetaccess.com

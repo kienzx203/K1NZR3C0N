@@ -1,0 +1,8 @@
+/index.html          [32m (Status: 200)[0m [Size: 1717]
+/nbproject/          [31m (Status: 502)[0m [Size: 15]
+/soap/               [32m (Status: 200)[0m [Size: 0]
+/soap/api-docs       [32m (Status: 200)[0m [Size: 0]
+/soap/swagger        [32m (Status: 200)[0m [Size: 0]
+/soap                [32m (Status: 200)[0m [Size: 0]
+/cdn-cgi/trace       [32m (Status: 200)[0m [Size: 236]
+/cdn-cgi/l/email-protection[32m (Status: 200)[0m [Size: 4694]

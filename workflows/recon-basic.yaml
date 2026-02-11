@@ -1,9 +1,7 @@
 name: recon-basic
 vars:
   httpx_bin: /home/k1nzx/go/bin/httpx
-  naabu_bin: naabu
   naabu_rate: 1000
-  naabu_ports: top-1000
 steps:
   - id: subs
     name: subdomain workflow
@@ -12,7 +10,7 @@ steps:
   - id: naabu
     name: port scan (naabu)
     depends_on: ['subs.dnsx_resolve']
-    run: '{vars.naabu_bin} -list {steps.subs.dnsx_resolve.resolved} -rate {vars.naabu_rate} -p {vars.naabu_ports} -o {workspace}/naabu.txt'
+    run: 'naabu -list {steps.subs.dnsx_resolve.resolved} -rate {vars.naabu_rate} -p - -o {workspace}/naabu.txt'
     outputs:
       naabu_file: '{workspace}/naabu.txt'
     requires:

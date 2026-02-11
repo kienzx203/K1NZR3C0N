@@ -1,0 +1,50 @@
+name: recon-basic-from-list
+vars:
+  subdomains_list: /mnt/f/web/web/K1NZR3C0N/runs/privateinternetaccess.com/20260206-223527/subdomains_resolved.txt
+  httpx_bin: /home/k1nzx/go/bin/httpx
+  naabu_rate: 1000
+steps:
+  - id: prepare_input
+    name: normalize input subdomain list
+    run: "cat {vars.subdomains_list} | sed 's/\\r$//' | sed '/^\\s*$/d' | sort -u > {workspace}/subdomains_input.txt"
+    outputs:
+      input_file: '{workspace}/subdomains_input.txt'
+    requires:
+      - path: '{workspace}/subdomains_input.txt'
+        min_bytes: 1
+  - id: naabu
+    name: port scan (naabu)
+    depends_on: ['prepare_input']
+    run: 'naabu -list {steps.prepare_input.input_file} -rate {vars.naabu_rate} -p - -o {workspace}/naabu.txt'
+    outputs:
+      naabu_file: '{workspace}/naabu.txt'
+    requires:
+      - path: '{workspace}/naabu.txt'
+        min_bytes: 0
+  - id: httpx
+    name: http probe
+    depends_on: ['prepare_input', 'naabu']
+    run: '{vars.httpx_bin} -l {steps.prepare_input.input_file} -silent -o {workspace}/alive.txt'
+    outputs:
+      alive_file: '{workspace}/alive.txt'
+    requires:
+      - path: '{workspace}/alive.txt'
+        min_bytes: 1
+  - id: nuclei
+    name: vuln scan
+    depends_on: ['httpx']
+    run: 'nuclei -l {steps.httpx.alive_file} -nmhe -jsonl -o {workspace}/nuclei.jsonl'
+    outputs:
+      nuclei_jsonl: '{workspace}/nuclei.jsonl'
+    requires:
+      - path: '{workspace}/nuclei.jsonl'
+        min_bytes: 1
+  - id: nuclei_report
+    name: nuclei report
+    depends_on: ['nuclei']
+    run: 'python scripts/nuclei_report.py --input {steps.nuclei.nuclei_jsonl} --out {workspace}/nuclei_report'
+    outputs:
+      nuclei_summary: '{workspace}/nuclei_report/summary.md'
+    requires:
+      - path: '{workspace}/nuclei_report/summary.md'
+        min_bytes: 1

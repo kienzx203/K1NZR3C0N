@@ -1,0 +1,3 @@
+# Dirsearch started Mon Feb  9 20:47:35 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://api.jwks.privateinternetaccess.com -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/api.jwks.privateinternetaccess.com/20260209-203738/dirsearch.txt
+
+200   884B   https://api.jwks.privateinternetaccess.com/.well-known/jwks.json

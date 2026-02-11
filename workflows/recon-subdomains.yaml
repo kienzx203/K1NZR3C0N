@@ -4,107 +4,105 @@ vars:
   chaos_key: 'c92e6492-9d65-4653-aa8c-3429b5d34c62'
   oneforall_cmd: /home/k1nzx/OneForAll/oneforall.py
   chaos_bin: /home/k1nzx/go/bin/chaos
+  subzy_bin: /home/k1nzx/go/bin/subzy
+  scripts_dir: /mnt/f/web/web/K1NZR3C0N
 steps:
-  - id: subdomain_enum
-    name: enumerate subdomains (multi-tool)
-    fanout_concurrency: 6
-    fanout_timeout_default: 15m
-    fanout:
-      - id: subfinder
-        run: 'subfinder -d {target} -silent -all -o {workspace}/subfinder.txt'
-        outputs:
-          file: '{workspace}/subfinder.txt'
-        requires:
-          - path: '{workspace}/subfinder.txt'
-            min_bytes: 1
-      - id: amass
-        run: 'amass enum -passive -d {target} -o {workspace}/amass.txt'
-        outputs:
-          file: '{workspace}/amass.txt'
-        requires:
-          - path: '{workspace}/amass.txt'
-            min_bytes: 1
-      - id: assetfinder
-        run: 'assetfinder --subs-only {target} > {workspace}/assetfinder.txt'
-        outputs:
-          file: '{workspace}/assetfinder.txt'
-        requires:
-          - path: '{workspace}/assetfinder.txt'
-            min_bytes: 1
-      - id: sublist3r
-        run: 'sublist3r -d {target} -o {workspace}/sublist3r.txt'
-        outputs:
-          file: '{workspace}/sublist3r.txt'
-        requires:
-          - path: '{workspace}/sublist3r.txt'
-            min_bytes: 1
-      - id: findomain
-        run: 'findomain -t {target} -q -u {workspace}/findomain.txt'
-        outputs:
-          file: '{workspace}/findomain.txt'
-        requires:
-          - path: '{workspace}/findomain.txt'
-            min_bytes: 1
-      - id: chaos
-        run: '{vars.chaos_bin} -d {target} -silent -key {vars.chaos_key} -o {workspace}/chaos.txt'
-        outputs:
-          file: '{workspace}/chaos.txt'
-        requires:
-          - path: '{workspace}/chaos.txt'
-            min_bytes: 1
-      - id: gobuster_dns
-        run: 'gobuster dns --do {target} -w {vars.sub_wordlist} -t 50 -o {workspace}/gobuster_dns.txt'
-        outputs:
-          file: '{workspace}/gobuster_dns.txt'
-        requires:
-          - path: '{workspace}/gobuster_dns.txt'
-            min_bytes: 1
-      - id: oneforall
-        run: 'python {vars.oneforall_cmd} --target {target} --path {workspace}/oneforall --fmt csv run'
-        outputs:
-          file: '{workspace}/oneforall'
-        requires:
-          - path: '{workspace}/oneforall'
-            min_bytes: 0
+  - id: subfinder
+    name: subfinder
+    run: 'subfinder -d {target} -silent -all -o {workspace}/subfinder.txt'
+    outputs:
+      file: '{workspace}/subfinder.txt'
+    requires:
+      - path: '{workspace}/subfinder.txt'
+        min_bytes: 1
+  - id: assetfinder
+    name: assetfinder
+    run: 'assetfinder --subs-only {target} > {workspace}/assetfinder.txt'
+    outputs:
+      file: '{workspace}/assetfinder.txt'
+    requires:
+      - path: '{workspace}/assetfinder.txt'
+        min_bytes: 1
+  - id: sublist3r
+    name: sublist3r
+    run: 'sublist3r -d {target} -o {workspace}/sublist3r.txt'
+    outputs:
+      file: '{workspace}/sublist3r.txt'
+    requires:
+      - path: '{workspace}/sublist3r.txt'
+        min_bytes: 1
+  - id: findomain
+    name: findomain
+    run: 'findomain -t {target} -q -u {workspace}/findomain.txt'
+    outputs:
+      file: '{workspace}/findomain.txt'
+    requires:
+      - path: '{workspace}/findomain.txt'
+        min_bytes: 1
+  - id: chaos
+    name: chaos
+    run: '{vars.chaos_bin} -d {target} -silent -key {vars.chaos_key} -o {workspace}/chaos.txt'
+    outputs:
+      file: '{workspace}/chaos.txt'
+    requires:
+      - path: '{workspace}/chaos.txt'
+        min_bytes: 1
+  - id: gobuster_dns
+    name: gobuster dns
+    run: 'gobuster dns --do {target} -w {vars.sub_wordlist} -t 50 -o {workspace}/gobuster_dns.txt'
+    outputs:
+      file: '{workspace}/gobuster_dns.txt'
+    requires:
+      - path: '{workspace}/gobuster_dns.txt'
+        min_bytes: 1
+  - id: oneforall
+    name: oneforall
+    run: 'python {vars.oneforall_cmd} --target {target} --path {workspace}/oneforall --fmt csv run'
+    timeout: 45m
+    retries: 1
+    outputs:
+      file: '{workspace}/oneforall'
+    requires:
+      - path: '{workspace}/oneforall'
+        min_bytes: 0
   - id: oneforall_collect
     name: collect oneforall output
-    depends_on: ['subdomain_enum']
-    run: 'python scripts/oneforall_extract.py --input {steps.subdomain_enum.oneforall.file} --output {workspace}/oneforall.txt'
+    depends_on: ['oneforall']
+    run: 'python {vars.scripts_dir}/scripts/oneforall_extract.py --input {steps.oneforall.file} --output {workspace}/oneforall.txt'
     outputs:
       oneforall_file: '{workspace}/oneforall.txt'
     requires:
       - path: '{workspace}/oneforall.txt'
         min_bytes: 0
-  - id: normalize_sources
-    name: normalize amass/gobuster/oneforall
-    depends_on: ['subdomain_enum', 'oneforall_collect']
-    fanout_concurrency: 3
-    fanout:
-      - id: amass
-        run: 'python scripts/normalize_subdomains.py --input {steps.subdomain_enum.amass.file} --output {workspace}/amass.clean.txt --target {target}'
-        outputs:
-          file: '{workspace}/amass.clean.txt'
-        requires:
-          - path: '{workspace}/amass.clean.txt'
-            min_bytes: 0
-      - id: gobuster_dns
-        run: 'python scripts/normalize_subdomains.py --input {steps.subdomain_enum.gobuster_dns.file} --output {workspace}/gobuster_dns.clean.txt --target {target}'
-        outputs:
-          file: '{workspace}/gobuster_dns.clean.txt'
-        requires:
-          - path: '{workspace}/gobuster_dns.clean.txt'
-            min_bytes: 0
-      - id: oneforall
-        run: 'python scripts/normalize_subdomains.py --input {steps.oneforall_collect.oneforall_file} --output {workspace}/oneforall.clean.txt --target {target}'
-        outputs:
-          file: '{workspace}/oneforall.clean.txt'
-        requires:
-          - path: '{workspace}/oneforall.clean.txt'
-            min_bytes: 0
+  - id: normalize_gobuster
+    name: normalize gobuster
+    depends_on: ['gobuster_dns']
+    run: 'python {vars.scripts_dir}/scripts/normalize_subdomains.py --input {steps.gobuster_dns.file} --output {workspace}/gobuster_dns.clean.txt --target {target}'
+    outputs:
+      file: '{workspace}/gobuster_dns.clean.txt'
+    requires:
+      - path: '{workspace}/gobuster_dns.clean.txt'
+        min_bytes: 0
+  - id: normalize_oneforall
+    name: normalize oneforall
+    depends_on: ['oneforall_collect']
+    run: 'python {vars.scripts_dir}/scripts/normalize_subdomains.py --input {steps.oneforall_collect.oneforall_file} --output {workspace}/oneforall.clean.txt --target {target}'
+    outputs:
+      file: '{workspace}/oneforall.clean.txt'
+    requires:
+      - path: '{workspace}/oneforall.clean.txt'
+        min_bytes: 0
   - id: merge_subdomains
     name: merge and deduplicate
-    depends_on: ['subdomain_enum', 'oneforall_collect', 'normalize_sources']
-    run: 'cat {steps.subdomain_enum.subfinder.file} {steps.normalize_sources.amass.file} {steps.subdomain_enum.assetfinder.file} {steps.subdomain_enum.sublist3r.file} {steps.subdomain_enum.findomain.file} {steps.subdomain_enum.chaos.file} {steps.normalize_sources.gobuster_dns.file} {steps.normalize_sources.oneforall.file} | sort -u > {workspace}/subdomains.txt'
+    depends_on:
+      - subfinder
+      - assetfinder
+      - sublist3r
+      - findomain
+      - chaos
+      - normalize_gobuster
+      - normalize_oneforall
+    run: 'cat {steps.subfinder.file} {steps.assetfinder.file} {steps.sublist3r.file} {steps.findomain.file} {steps.chaos.file} {steps.normalize_gobuster.file} {steps.normalize_oneforall.file} | sort -u > {workspace}/subdomains.txt'
     outputs:
       subdomains: '{workspace}/subdomains.txt'
     requires:
@@ -117,9 +115,22 @@ steps:
     outputs:
       resolved: '{workspace}/subdomains_resolved.txt'
     requires:
+      - path: '{steps.merge_subdomains.subdomains}'
+        min_bytes: 1
       - path: '{workspace}/subdomains_resolved.txt'
+        min_bytes: 1
+  - id: subzy
+    name: check subdomain takeover
+    depends_on: ['dnsx_resolve']
+    run: '{vars.subzy_bin} run --targets {steps.dnsx_resolve.resolved} > {workspace}/subzy.txt'
+    outputs:
+      subzy_file: '{workspace}/subzy.txt'
+    requires:
+      - path: '{steps.dnsx_resolve.resolved}'
+        min_bytes: 1
+      - path: '{workspace}/subzy.txt'
         min_bytes: 0
   - id: cleanup
     name: cleanup workspace
-    depends_on: ['dnsx_resolve']
-    run: 'python scripts/cleanup_run.py --workspace {workspace} --keep subdomains.txt subdomains_resolved.txt resume.json'
+    depends_on: ['subzy']
+    run: 'python {vars.scripts_dir}/scripts/cleanup_run.py --workspace {workspace} --keep subdomains.txt subdomains_resolved.txt subzy.txt resume.json'

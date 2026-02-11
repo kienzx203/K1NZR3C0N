@@ -1,0 +1,7 @@
+dev-ok.piaservers.com:443
+dev-ok.piaservers.com:80
+wl-partner.piaservers.com:2082
+wl-partner.piaservers.com:8080
+wl-partner.piaservers.com:2053
+wl-partner.piaservers.com:2087
+wl-partner.piaservers.com:8443

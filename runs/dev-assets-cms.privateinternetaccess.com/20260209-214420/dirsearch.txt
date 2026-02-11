@@ -1,0 +1,6 @@
+# Dirsearch started Mon Feb  9 21:54:48 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://dev-assets-cms.privateinternetaccess.com -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/dev-assets-cms.privateinternetaccess.com/20260209-214420/dirsearch.txt
+
+200    14B   https://dev-assets-cms.privateinternetaccess.com/.gitignore
+502     6KB  https://dev-assets-cms.privateinternetaccess.com/admin-cgi
+502     6KB  https://dev-assets-cms.privateinternetaccess.com/admin_left.jsp
+200     0B   https://dev-assets-cms.privateinternetaccess.com/soap/
