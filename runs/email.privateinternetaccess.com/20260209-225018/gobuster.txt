@@ -1,2 +1,0 @@
-/cdn-cgi/trace       [32m (Status: 200)[0m [Size: 224]
-/cdn-cgi/l/email-protection[32m (Status: 200)[0m [Size: 4694]

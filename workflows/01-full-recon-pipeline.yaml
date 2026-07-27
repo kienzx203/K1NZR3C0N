@@ -1,0 +1,821 @@
+name: 01-full-recon-pipeline
+description: 'Full recon pipeline: passive+active subdomain → ASN/IP recon → TLS SAN mining → DNS resolve → port scan → HTTP probe → CDN check → URL crawl → JS analysis → takeover → cloud storage → nuclei/afrog vuln scan'
+vars:
+  run_passive: 'true'
+  run_waymore: 'true'
+  run_asn: 'true'
+  run_active_dns: 'true'
+  run_permutation: 'true'
+  run_tlsx: 'true'
+  run_portscan: 'true'
+  run_asn_portscan: 'true'
+  run_deep_portscan: 'true'
+  run_screenshot: 'true'
+  run_cdncheck: 'true'
+  run_crawl: 'true'
+  run_js_analysis: 'true'
+  run_takeover: 'true'
+  run_s3scan: 'true'
+  run_nuclei: 'true'
+  run_afrog: 'true'
+  subdomains_list: ''
+  chaos_key: ''
+  sub_wordlist: /app/wordlists/subdomains-top1million-20000.txt
+  sub_wordlist_full: /app/wordlists/subdomains-top1million-110000.txt
+  dns_resolvers: 1.1.1.1,8.8.8.8,1.0.0.1,8.8.4.4,9.9.9.9,208.67.222.222
+  dnsx_threads: '150'
+  dnsx_retry: '3'
+  shuffledns_threads: '5000'
+  naabu_rate: '1500'
+  naabu_top_ports: '1000'
+  rustscan_batch: '5000'
+  rustscan_timeout_ms: '2000'
+  nmap_flags: -sV -sC -Pn --open -T4 --max-retries 2
+  httpx_threads: '100'
+  httpx_timeout: '10'
+  katana_depth: '3'
+  katana_concurrency: '20'
+  katana_crawl_timeout: 10m
+  screenshot_threads: '10'
+  nuclei_rl: '150'
+  nuclei_concurrency: '25'
+  nuclei_timeout: '10'
+  org_name: ''
+  scripts_dir: /app
+  oneforall_cmd: python /opt/OneForAll/oneforall.py
+steps:
+- id: p_subfinder
+  name: '[passive] subfinder — cert transparency + 80+ passive APIs'
+  when: '{vars.run_passive}'
+  optional: true
+  skip_if_exists: true
+  run: subfinder -d {target} -silent -all -recursive -o {workspace}/p_subfinder.txt
+  outputs:
+    file: '{workspace}/p_subfinder.txt'
+- id: p_assetfinder
+  name: '[passive] assetfinder — Facebook CT + various APIs'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  run: assetfinder --subs-only {target} > {workspace}/p_assetfinder.txt 2>/dev/null; touch {workspace}/p_assetfinder.txt
+  outputs:
+    file: '{workspace}/p_assetfinder.txt'
+- id: p_findomain
+  name: '[passive] findomain — certificate transparency + APIs'
+  when: '{vars.run_passive}'
+  optional: true
+  skip_if_exists: true
+  run: findomain -t {target} -q -u {workspace}/p_findomain.txt
+  outputs:
+    file: '{workspace}/p_findomain.txt'
+- id: p_sublist3r
+  name: '[passive] sublist3r — search engines (Google/Bing/Baidu/Netcraft)'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: sublist3r -d {target} -o {workspace}/p_sublist3r.txt 2>/dev/null; touch {workspace}/p_sublist3r.txt
+  outputs:
+    file: '{workspace}/p_sublist3r.txt'
+- id: p_amass
+  name: '[passive] amass — OWASP passive multi-source'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 30m
+  run: amass enum -passive -d {target} -silent -o {workspace}/p_amass.txt 2>/dev/null; touch {workspace}/p_amass.txt
+  outputs:
+    file: '{workspace}/p_amass.txt'
+- id: p_chaos
+  name: '[passive] chaos — ProjectDiscovery bug-bounty dataset'
+  when: '{vars.run_passive} && {vars.chaos_key}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  run: chaos -d {target} -silent -key {vars.chaos_key} -o {workspace}/p_chaos.txt 2>/dev/null; touch {workspace}/p_chaos.txt
+  outputs:
+    file: '{workspace}/p_chaos.txt'
+- id: p_oneforall
+  name: '[passive] OneForAll — comprehensive 60-source aggregator'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 45m
+  run: mkdir -p {workspace}/oneforall && {vars.oneforall_cmd} --target {target} --path {workspace}/oneforall --fmt csv run 2>/dev/null; true
+  outputs:
+    dir: '{workspace}/oneforall'
+- id: p_oneforall_extract
+  name: '[passive] OneForAll — extract subdomains from CSV'
+  depends_on:
+  - p_oneforall
+  shell: true
+  optional: true
+  run: python {vars.scripts_dir}/scripts/oneforall_extract.py --input {workspace}/oneforall --output {workspace}/p_oneforall.txt 2>/dev/null; touch {workspace}/p_oneforall.txt
+  outputs:
+    file: '{workspace}/p_oneforall.txt'
+- id: p_cero
+  name: '[passive] cero — TLS certificate SAN extraction via SNI'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  run: cero {target} 2>/dev/null | grep -F ".{target}" | sed 's/^\*\.//' | sort -u > {workspace}/p_cero.txt; touch {workspace}/p_cero.txt
+  outputs:
+    file: '{workspace}/p_cero.txt'
+- id: p_uncover
+  name: '[passive] uncover — Shodan/Fofa/Censys/Hunter/Netlas OSINT'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  run: uncover -q "ssl.cert.subject.cn:{target}" -silent 2>/dev/null | grep -F ".{target}" | sort -u > {workspace}/p_uncover.txt; touch {workspace}/p_uncover.txt
+  outputs:
+    file: '{workspace}/p_uncover.txt'
+- id: p_waybackurls
+  name: '[passive] waybackurls — extract subdomains from Wayback Machine URLs'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: echo {target} | timeout 300 waybackurls 2>/dev/null | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' | sort -u > {workspace}/p_waybackurls_subs.txt; touch {workspace}/p_waybackurls_subs.txt
+  outputs:
+    file: '{workspace}/p_waybackurls_subs.txt'
+- id: p_gau
+  name: '[passive] gau — extract subdomains from GAU URL archive'
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: gau --subs {target} --threads 5 --timeout 30 2>/dev/null | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' | sort -u > {workspace}/p_gau_subs.txt; touch {workspace}/p_gau_subs.txt
+  outputs:
+    file: '{workspace}/p_gau_subs.txt'
+- id: p_waymore
+  name: '[passive] waymore — Wayback+CommonCrawl+OTX+URLScan URL archive → subdomains'
+  when: '{vars.run_passive} && {vars.run_waymore}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 15m
+  run: waymore -i {target} -mode U -oU {workspace}/p_waymore_urls.txt -t 120 2>/dev/null || true; test -f {workspace}/p_waymore_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_waymore_urls.txt | sort -u > {workspace}/p_waymore_subs.txt || true; touch {workspace}/p_waymore_subs.txt {workspace}/p_waymore_urls.txt
+  outputs:
+    subs: '{workspace}/p_waymore_subs.txt'
+    urls: '{workspace}/p_waymore_urls.txt'
+- id: p_urlfinder
+  name: '[passive] urlfinder — Wayback+AlienVault+CommonCrawl+URLScan URL archive → subdomains'
+  when: '{vars.run_passive} && {vars.run_waymore}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: urlfinder -d {target} -silent -o {workspace}/p_urlfinder_urls.txt 2>/dev/null || true; test -f {workspace}/p_urlfinder_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_urlfinder_urls.txt | sort -u > {workspace}/p_urlfinder_subs.txt || true; touch {workspace}/p_urlfinder_subs.txt {workspace}/p_urlfinder_urls.txt
+  outputs:
+    subs: '{workspace}/p_urlfinder_subs.txt'
+    urls: '{workspace}/p_urlfinder_urls.txt'
+- id: merge_passive
+  name: merge all passive sources → deduplicate + scope-filter
+  depends_on:
+  - p_subfinder
+  - p_assetfinder
+  - p_findomain
+  - p_sublist3r
+  - p_amass
+  - p_chaos
+  - p_oneforall_extract
+  - p_cero
+  - p_uncover
+  - p_waybackurls
+  - p_gau
+  - p_waymore
+  - p_urlfinder
+  run_on_failed_deps: true
+  shell: true
+  run: |
+    (
+      printf '%s\n%s\n' "{target}" "www.{target}"
+      cat \
+        {workspace}/p_subfinder.txt \
+        {workspace}/p_assetfinder.txt \
+        {workspace}/p_findomain.txt \
+        {workspace}/p_sublist3r.txt \
+        {workspace}/p_amass.txt \
+        {workspace}/p_chaos.txt \
+        {workspace}/p_oneforall.txt \
+        {workspace}/p_cero.txt \
+        {workspace}/p_uncover.txt \
+        {workspace}/p_waybackurls_subs.txt \
+        {workspace}/p_gau_subs.txt \
+        {workspace}/p_waymore_subs.txt \
+        {workspace}/p_urlfinder_subs.txt \
+        2>/dev/null || true
+      test -n '{vars.subdomains_list}' && test -f '{vars.subdomains_list}' && cat '{vars.subdomains_list}' || true
+    ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
+      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | sort -u > {workspace}/passive_merged.txt
+  outputs:
+    file: '{workspace}/passive_merged.txt'
+  requires:
+  - path: '{workspace}/passive_merged.txt'
+    min_bytes: 1
+- id: asn_discover
+  name: '[ASN] metabigor — discover IP/CIDR ranges for org (local ASN DB, no API key)'
+  when: '{vars.run_asn}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 5m
+  run: "(\n  echo '{target}' | metabigor net --domain 2>/dev/null || true;\n  test -n '{vars.org_name}' && echo '{vars.org_name}' | metabigor net --org 2>/dev/null || true\n) | grep -oE '[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}/[0-9]+' | sort -u > {workspace}/asn_ipv4_cidrs.txt || true; touch {workspace}/asn_ipv4_cidrs.txt; printf 'ASN IPv4 CIDRs discovered: %s\\n' \"$(wc -l < {workspace}/asn_ipv4_cidrs.txt)\" > {workspace}/asn_stats.txt"
+  outputs:
+    ipv4_cidrs: '{workspace}/asn_ipv4_cidrs.txt'
+- id: active_dns_brute
+  name: active DNS bruteforce — gobuster + shuffledns + puredns (parallel)
+  when: '{vars.run_active_dns}'
+  optional: true
+  fanout_concurrency: 3
+  fanout_timeout_default: 40m
+  fanout:
+  - id: gobuster_dns
+    skip_if_exists: true
+    run: gobuster dns --domain {target} -w {vars.sub_wordlist} -t 200 --resolver 1.1.1.1 --timeout 3s -q --no-fqdn --no-progress --no-error -o {workspace}/a_gobuster_dns.txt
+    outputs:
+      file: '{workspace}/a_gobuster_dns.txt'
+    optional: true
+  - id: shuffledns
+    shell: true
+    skip_if_exists: true
+    run: printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers.txt; shuffledns -d {target} -w {vars.sub_wordlist} -r {workspace}/resolvers.txt -t {vars.shuffledns_threads} -silent -o {workspace}/a_shuffledns.txt 2>/dev/null; touch {workspace}/a_shuffledns.txt
+    outputs:
+      file: '{workspace}/a_shuffledns.txt'
+    optional: true
+  - id: puredns
+    shell: true
+    skip_if_exists: true
+    run: printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n' > {workspace}/resolvers_pure.txt; puredns bruteforce {vars.sub_wordlist_full} {target} --resolvers {workspace}/resolvers_pure.txt --wildcard-tests 5 -q 2>/dev/null | sort -u > {workspace}/a_puredns.txt; touch {workspace}/a_puredns.txt
+    outputs:
+      file: '{workspace}/a_puredns.txt'
+    optional: true
+- id: permutation_dns
+  name: DNS permutation — dnsgen + alterx → resolve with dnsx
+  depends_on:
+  - merge_passive
+  when: '{vars.run_permutation}'
+  optional: true
+  fanout_concurrency: 2
+  fanout_timeout_default: 15m
+  fanout:
+  - id: dnsgen_resolve
+    shell: true
+    skip_if_exists: true
+    timeout: 15m
+    run: |
+      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n' > {workspace}/resolvers.txt 2>/dev/null || true
+      if test -s {workspace}/passive_merged.txt; then
+        head -300 {workspace}/passive_merged.txt | dnsgen - 2>/dev/null \
+          | shuffledns -d {target} -r {workspace}/resolvers.txt -t 3000 -silent 2>/dev/null \
+          | sort -u > {workspace}/perm_dnsgen.txt || true
+      fi
+      touch {workspace}/perm_dnsgen.txt
+    outputs:
+      file: '{workspace}/perm_dnsgen.txt'
+    optional: true
+  - id: alterx_resolve
+    shell: true
+    skip_if_exists: true
+    timeout: 15m
+    run: |
+      if test -s {workspace}/passive_merged.txt; then
+        alterx -l {workspace}/passive_merged.txt -silent -limit 50000 2>/dev/null \
+          | dnsx -silent -r {vars.dns_resolvers} -t {vars.dnsx_threads} -retry {vars.dnsx_retry} 2>/dev/null \
+          | sort -u > {workspace}/perm_alterx.txt || true
+      fi
+      touch {workspace}/perm_alterx.txt
+    outputs:
+      file: '{workspace}/perm_alterx.txt'
+    optional: true
+- id: merge_all_subdomains
+  name: merge passive + active + permutation → final candidate list
+  depends_on:
+  - merge_passive
+  - active_dns_brute
+  - permutation_dns
+  run_on_failed_deps: true
+  shell: true
+  run: |
+    (
+      cat {workspace}/passive_merged.txt 2>/dev/null || true
+      cat \
+        {workspace}/a_gobuster_dns.txt \
+        {workspace}/a_shuffledns.txt \
+        {workspace}/a_puredns.txt \
+        {workspace}/perm_dnsgen.txt \
+        {workspace}/perm_alterx.txt \
+        2>/dev/null || true
+    ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
+      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | sort -u > {workspace}/subdomains_all.txt
+  outputs:
+    subdomains_all: '{workspace}/subdomains_all.txt'
+  requires:
+  - path: '{workspace}/subdomains_all.txt'
+    min_bytes: 1
+- id: puredns_resolve
+  name: DNS resolve pass-1 — puredns mass-resolve + wildcard filter (massdns engine)
+  depends_on:
+  - merge_all_subdomains
+  shell: true
+  optional: true
+  skip_if_exists: true
+  retries: 1
+  timeout: 30m
+  run: printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_all.txt; puredns resolve {steps.merge_all_subdomains.subdomains_all} --resolvers {workspace}/resolvers_all.txt --wildcard-tests 5 --wildcard-batch 1000000 -q 2>/dev/null | sort -u > {workspace}/puredns_live.txt || true; touch {workspace}/puredns_live.txt
+  outputs:
+    puredns_live: '{workspace}/puredns_live.txt'
+  _phase: resolve
+- id: dnsx_resolve
+  name: DNS resolve pass-2 — dnsx enrich live hosts with A/AAAA/CNAME records
+  depends_on:
+  - puredns_resolve
+  - merge_all_subdomains
+  shell: true
+  skip_if_exists: true
+  retries: 1
+  run: INPUT=$(test -s {workspace}/puredns_live.txt && echo {workspace}/puredns_live.txt || echo {steps.merge_all_subdomains.subdomains_all}); dnsx -l "$INPUT" -silent -r {vars.dns_resolvers} -t {vars.dnsx_threads} -retry {vars.dnsx_retry} -a -aaaa -cname -o {workspace}/subdomains_resolved.txt 2>/dev/null; touch {workspace}/subdomains_resolved.txt
+  outputs:
+    resolved: '{workspace}/subdomains_resolved.txt'
+  requires:
+  - path: '{workspace}/subdomains_resolved.txt'
+    min_bytes: 1
+- id: resolve_stats
+  name: resolution stats — count passive vs active vs puredns vs dnsx resolved
+  depends_on:
+  - merge_all_subdomains
+  - puredns_resolve
+  - dnsx_resolve
+  run_on_failed_deps: true
+  shell: true
+  run: 'printf ''Passive unique: %s\nAll candidates: %s\npuredns live (wildcard-filtered): %s\ndnsx resolved (A/AAAA/CNAME): %s\n'' "$(wc -l < {workspace}/passive_merged.txt    2>/dev/null || echo 0)" "$(wc -l < {workspace}/subdomains_all.txt    2>/dev/null || echo 0)" "$(wc -l < {workspace}/puredns_live.txt      2>/dev/null || echo 0)" "$(wc -l < {workspace}/subdomains_resolved.txt 2>/dev/null || echo 0)" > {workspace}/resolve_stats.txt; cat {workspace}/resolve_stats.txt'
+  outputs:
+    stats: '{workspace}/resolve_stats.txt'
+- id: tlsx_san_mine
+  name: '[TLS] tlsx — scan live hosts for certificates, extract SAN entries'
+  depends_on:
+  - dnsx_resolve
+  when: '{vars.run_tlsx}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 20m
+  run: |
+    test -s {workspace}/subdomains_resolved.txt && tlsx -l {workspace}/subdomains_resolved.txt \
+      -san -cn -silent \
+      -p 443,8443,4443 \
+      -timeout 5 \
+      -o {workspace}/tlsx_raw.txt 2>/dev/null || true
+    touch {workspace}/tlsx_raw.txt
+  outputs:
+    file: '{workspace}/tlsx_raw.txt'
+- id: tlsx_san_extract
+  name: '[TLS] extract new in-scope subdomains from TLS SAN entries'
+  depends_on:
+  - tlsx_san_mine
+  when: '{vars.run_tlsx}'
+  shell: true
+  optional: true
+  run: |
+    sed 's/\x1b\[[0-9;]*m//g' {workspace}/tlsx_raw.txt 2>/dev/null \
+      | grep -oP '(?<=\[)[^\]]+(?=\])' \
+      | sed 's/^\*\.//' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
+      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | sort -u > {workspace}/tlsx_all_subs.txt || true
+    comm -23 \
+      <(sort {workspace}/tlsx_all_subs.txt 2>/dev/null || true) \
+      <(sort {workspace}/subdomains_resolved.txt 2>/dev/null || true) \
+      > {workspace}/tlsx_new_subs.txt 2>/dev/null || touch {workspace}/tlsx_new_subs.txt
+    touch {workspace}/tlsx_new_subs.txt
+    printf 'TLS SAN new subs discovered: %s\n' "$(wc -l < {workspace}/tlsx_new_subs.txt)" >> {workspace}/resolve_stats.txt || true
+  outputs:
+    file: '{workspace}/tlsx_new_subs.txt'
+- id: dnsx_san_resolve
+  name: '[TLS] DNS resolve TLS-discovered subdomains → enrich host list'
+  depends_on:
+  - tlsx_san_extract
+  when: '{vars.run_tlsx}'
+  shell: true
+  optional: true
+  run: |
+    test -s {workspace}/tlsx_new_subs.txt && dnsx -l {workspace}/tlsx_new_subs.txt \
+      -silent -r {vars.dns_resolvers} \
+      -t {vars.dnsx_threads} -retry {vars.dnsx_retry} \
+      -a -aaaa -cname \
+      -o {workspace}/subdomains_tlsx_resolved.txt 2>/dev/null || true
+    touch {workspace}/subdomains_tlsx_resolved.txt
+    printf 'TLS SAN resolved (live): %s\n' "$(wc -l < {workspace}/subdomains_tlsx_resolved.txt)" >> {workspace}/resolve_stats.txt || true
+  outputs:
+    tlsx_resolved: '{workspace}/subdomains_tlsx_resolved.txt'
+- id: merge_all_resolved
+  name: merge DNS resolved + TLS SAN resolved → comprehensive host list
+  depends_on:
+  - dnsx_resolve
+  - dnsx_san_resolve
+  run_on_failed_deps: true
+  shell: true
+  run: "(\n  cat {workspace}/subdomains_resolved.txt 2>/dev/null || true;\n  cat {workspace}/subdomains_tlsx_resolved.txt 2>/dev/null || true\n) | sort -u > {workspace}/subdomains_all_resolved.txt; printf 'Total resolved (DNS+TLS): %s\\n' \"$(wc -l < {workspace}/subdomains_all_resolved.txt)\" >> {workspace}/resolve_stats.txt || true"
+  outputs:
+    all_resolved: '{workspace}/subdomains_all_resolved.txt'
+  requires:
+  - path: '{workspace}/subdomains_all_resolved.txt'
+    min_bytes: 1
+- id: naabu_topscan
+  name: port scan top-1000 — naabu (fast sweep all live hosts incl. TLS-discovered)
+  depends_on:
+  - merge_all_resolved
+  when: '{vars.run_portscan}'
+  optional: true
+  skip_if_exists: true
+  timeout: 90m
+  run: naabu -list {steps.merge_all_resolved.all_resolved} -rate {vars.naabu_rate} -top-ports {vars.naabu_top_ports} -json -o {workspace}/naabu.jsonl -silent -r {vars.dns_resolvers}
+  outputs:
+    naabu_jsonl: '{workspace}/naabu.jsonl'
+- id: naabu_asn_scan
+  name: port scan ASN IP ranges — naabu on organization CIDR ranges
+  depends_on:
+  - asn_discover
+  when: '{vars.run_asn} && {vars.run_asn_portscan}'
+  optional: true
+  skip_if_exists: true
+  timeout: 3h
+  shell: true
+  run: |
+    touch {workspace}/naabu_asn.jsonl
+    test -s {workspace}/asn_ipv4_cidrs.txt || exit 0
+
+    # Guard 1: if target's main IP is CDN/WAF, ASN ranges are CDN infra — skip
+    TARGET_IP=$(dig +short {target} 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [ -n "$TARGET_IP" ]; then
+      IS_CDN=$(echo "$TARGET_IP" | cdncheck -silent 2>/dev/null | head -1)
+      if [ -n "$IS_CDN" ]; then
+        echo "[asn_scan skip] $TARGET_IP is CDN/WAF ($IS_CDN) — ASN ranges belong to CDN infra, not target org"
+        exit 0
+      fi
+    fi
+
+    # Guard 2: > 50 CIDRs almost always means a major CDN/cloud provider, not the target org
+    CIDR_COUNT=$(wc -l < {workspace}/asn_ipv4_cidrs.txt)
+    if [ "$CIDR_COUNT" -gt 50 ]; then
+      echo "[asn_scan skip] $CIDR_COUNT CIDRs discovered — too broad to be target-specific (CDN/cloud ASN), skipping"
+      exit 0
+    fi
+
+    echo "[asn_scan] $CIDR_COUNT CIDRs look target-specific — proceeding with naabu scan"
+    naabu -list {workspace}/asn_ipv4_cidrs.txt -rate {vars.naabu_rate} -top-ports 100 -json -o {workspace}/naabu_asn.jsonl -silent 2>/dev/null || true
+  outputs:
+    file: '{workspace}/naabu_asn.jsonl'
+- id: deep_portscan
+  name: deep port scan — rustscan full range + nmap service detection
+  depends_on:
+  - merge_all_resolved
+  when: '{vars.run_deep_portscan}'
+  optional: true
+  fanout_concurrency: 2
+  fanout_timeout_default: 4h
+  fanout:
+  - id: rustscan_full
+    shell: true
+    run: rustscan -a {target} --range 1-65535 --scan-order random --batch-size {vars.rustscan_batch} --timeout {vars.rustscan_timeout_ms} --tries 2 --ulimit 5000 -- -Pn -sV -sC --open -oN {workspace}/rustscan_full.txt 2>/dev/null; touch {workspace}/rustscan_full.txt
+    outputs:
+      file: '{workspace}/rustscan_full.txt'
+    optional: true
+  - id: nmap_service
+    shell: true
+    run: test -s {workspace}/subdomains_all_resolved.txt && nmap {vars.nmap_flags} -iL {workspace}/subdomains_all_resolved.txt -oN {workspace}/nmap_service.txt 2>/dev/null; touch {workspace}/nmap_service.txt
+    outputs:
+      file: '{workspace}/nmap_service.txt'
+    optional: true
+- id: extract_web_targets
+  name: extract web targets — resolved hosts + naabu web ports (80/443/8x)
+  depends_on:
+  - merge_all_resolved
+  - naabu_topscan
+  run_on_failed_deps: true
+  shell: true
+  run: |
+    (
+      cat {workspace}/subdomains_all_resolved.txt 2>/dev/null || true
+      if test -f {workspace}/naabu.jsonl; then
+        jq -r 'select(.port and (.port==80 or .port==443 or .port==8080 or .port==8443 or .port==8888 or .port==9090 or .port==9443 or .port==3000 or .port==5000 or .port==4443)) | "\(.host // .ip)"' \
+          {workspace}/naabu.jsonl 2>/dev/null || true
+        jq -r '"\(.host // .ip):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null \
+          | grep -E ':(80|443|8080|8443|8888|9090|9443|3000|5000|4443)$' || true
+      fi
+    ) | sort -u > {workspace}/web_targets.txt
+  outputs:
+    web_targets: '{workspace}/web_targets.txt'
+- id: httpx
+  name: HTTP probe — title / tech-detect / status / redirect chain
+  depends_on:
+  - extract_web_targets
+  skip_if_exists: true
+  run: httpx -l {steps.extract_web_targets.web_targets} -silent -json -o {workspace}/httpx.jsonl -td -title -status-code -content-length -follow-redirects -timeout {vars.httpx_timeout} -threads {vars.httpx_threads} -random-agent
+  outputs:
+    httpx_jsonl: '{workspace}/httpx.jsonl'
+    alive_file: '{workspace}/httpx.jsonl'
+  requires:
+  - path: '{workspace}/httpx.jsonl'
+    min_bytes: 1
+- id: extract_live_urls
+  name: extract live URLs from httpx → for crawl + vuln scan input
+  depends_on:
+  - httpx
+  shell: true
+  run: jq -r '.url // empty' {workspace}/httpx.jsonl 2>/dev/null | sort -u > {workspace}/live_urls.txt; touch {workspace}/live_urls.txt
+  outputs:
+    live_urls: '{workspace}/live_urls.txt'
+- id: cdncheck_classify
+  name: '[CDN] cdncheck — classify live hosts as CDN vs origin (prioritize non-CDN)'
+  depends_on:
+  - merge_all_resolved
+  - httpx
+  when: '{vars.run_cdncheck}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 10m
+  run: |
+    test -s {workspace}/subdomains_all_resolved.txt && cdncheck \
+      -i {workspace}/subdomains_all_resolved.txt \
+      -jsonl -o {workspace}/cdncheck.jsonl 2>/dev/null || true
+    touch {workspace}/cdncheck.jsonl
+    jq -r 'select(.cdn != true and .waf != true and .cloud != true) | .input' \
+      {workspace}/cdncheck.jsonl 2>/dev/null | sort -u > {workspace}/origin_hosts.txt || true
+    touch {workspace}/origin_hosts.txt
+    CDN_COUNT=$(jq -r 'select(.cdn==true or .waf==true or .cloud==true) | .input' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
+    ORIGIN_COUNT=$(wc -l < {workspace}/origin_hosts.txt 2>/dev/null || echo 0)
+    printf 'CDN hosts: %s | Origin (non-CDN) hosts: %s\n' "$CDN_COUNT" "$ORIGIN_COUNT" >> {workspace}/resolve_stats.txt || true
+  outputs:
+    cdncheck_jsonl: '{workspace}/cdncheck.jsonl'
+    origin_hosts: '{workspace}/origin_hosts.txt'
+- id: screenshot
+  name: headless screenshots — gowitness (all live HTTP endpoints)
+  depends_on:
+  - extract_live_urls
+  when: '{vars.run_screenshot}'
+  shell: true
+  optional: true
+  run: |
+    test -s {workspace}/live_urls.txt || exit 0
+    mkdir -p {workspace}/screenshots
+    gowitness scan file \
+      -f {workspace}/live_urls.txt \
+      -s {workspace}/screenshots \
+      --write-db \
+      --write-db-uri sqlite://{workspace}/gowitness.sqlite3 \
+      --chrome-path /usr/local/bin/chromium-docker \
+      -T 30 --threads {vars.screenshot_threads} -q 2>{workspace}/gowitness.log || true
+    cd {workspace} && gowitness report generate \
+      --db-uri sqlite://{workspace}/gowitness.sqlite3 -q 2>/dev/null || true
+  outputs:
+    screenshot_dir: '{workspace}/screenshots'
+    gallery_html: '{workspace}/gallery.html'
+- id: url_collect
+  name: URL collection — katana JS-aware crawl + gau full URLs (parallel)
+  depends_on:
+  - extract_live_urls
+  when: '{vars.run_crawl}'
+  optional: true
+  fanout_concurrency: 2
+  fanout_timeout_default: 30m
+  fanout:
+  - id: katana_crawl
+    shell: true
+    skip_if_exists: true
+    run: |
+      test -s {workspace}/live_urls.txt && katana \
+        -list {workspace}/live_urls.txt \
+        -d {vars.katana_depth} \
+        -jc -silent \
+        -c {vars.katana_concurrency} \
+        -ct {vars.katana_crawl_timeout} \
+        -kf all \
+        -o {workspace}/katana_urls.txt 2>/dev/null || true
+      touch {workspace}/katana_urls.txt
+    outputs:
+      file: '{workspace}/katana_urls.txt'
+    optional: true
+  - id: gau_urls
+    shell: true
+    skip_if_exists: true
+    run: gau --subs {target} --threads 5 --timeout 30 2>/dev/null | sort -u > {workspace}/gau_all_urls.txt || true; touch {workspace}/gau_all_urls.txt
+    outputs:
+      file: '{workspace}/gau_all_urls.txt'
+    optional: true
+- id: merge_crawl_urls
+  name: merge all crawled URLs → deduplicated in-scope URL list
+  depends_on:
+  - url_collect
+  - extract_live_urls
+  when: '{vars.run_crawl}'
+  run_on_failed_deps: true
+  shell: true
+  run: "(\n  cat {workspace}/live_urls.txt 2>/dev/null || true;\n  cat {workspace}/katana_urls.txt 2>/dev/null || true;\n  cat {workspace}/gau_all_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waymore_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_urlfinder_urls.txt 2>/dev/null || true\n) | grep -E '^https?://' | awk -v t=\"{target}\" 'tolower($0) ~ tolower(t)' | sort -u > {workspace}/all_urls.txt; printf 'Total unique URLs collected: %s\\n' \"$(wc -l < {workspace}/all_urls.txt)\" >> {workspace}/resolve_stats.txt || true; touch {workspace}/all_urls.txt"
+  outputs:
+    all_urls: '{workspace}/all_urls.txt'
+- id: subjs_extract
+  name: '[JS] subjs — collect JS file URLs from crawled pages'
+  depends_on:
+  - merge_crawl_urls
+  when: '{vars.run_js_analysis}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 20m
+  run: 'test -s {workspace}/all_urls.txt && subjs -i {workspace}/all_urls.txt -c 20 2>/dev/null | grep -iE ''\.js(\?|$)'' | sort -u > {workspace}/js_urls.txt || true; touch {workspace}/js_urls.txt; printf ''JS files discovered: %s\n'' "$(wc -l < {workspace}/js_urls.txt)" >> {workspace}/resolve_stats.txt || true'
+  outputs:
+    js_urls: '{workspace}/js_urls.txt'
+- id: jsapiscan_scan
+  name: '[JS] jsapiscan — extract API endpoints from collected JS files'
+  depends_on:
+  - subjs_extract
+  when: '{vars.run_js_analysis}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 20m
+  run: 'test -s {workspace}/js_urls.txt && mkdir -p {workspace}/jsapiscan_out && cd {workspace}/jsapiscan_out && jsapiscan -f {workspace}/js_urls.txt -o {workspace}/jsapiscan_results.txt -K -t 20 -d 2 2>/dev/null || true; touch {workspace}/jsapiscan_results.txt; printf ''JS API endpoints found: %s\n'' "$(wc -l < {workspace}/jsapiscan_results.txt 2>/dev/null || echo 0)" >> {workspace}/resolve_stats.txt || true'
+  outputs:
+    file: '{workspace}/jsapiscan_results.txt'
+- id: js_subdomain_extract
+  name: '[JS] extract new subdomains from JS analysis → resolve'
+  depends_on:
+  - subjs_extract
+  - jsapiscan_scan
+  when: '{vars.run_js_analysis}'
+  shell: true
+  optional: true
+  run: "(\n  grep -oP '(?:https?://)\\K[a-zA-Z0-9._-]+\\.{target}(?=[/?#]|$)' {workspace}/js_urls.txt 2>/dev/null || true;\n  grep -oP '(?:https?://)\\K[a-zA-Z0-9._-]+\\.{target}(?=[/?#]|$)' {workspace}/jsapiscan_results.txt 2>/dev/null || true\n) | sort -u > {workspace}/js_subs.txt || true; touch {workspace}/js_subs.txt"
+  outputs:
+    file: '{workspace}/js_subs.txt'
+- id: takeover_check
+  name: subdomain takeover — subzy + subjack + dnstake (parallel)
+  depends_on:
+  - merge_all_resolved
+  when: '{vars.run_takeover}'
+  optional: true
+  fanout_concurrency: 3
+  fanout_timeout_default: 20m
+  fanout:
+  - id: subzy
+    shell: true
+    run: subzy run --targets {workspace}/subdomains_all_resolved.txt --concurrency 100 --verify-ssl --hide-fails > {workspace}/takeover_subzy.txt 2>/dev/null; touch {workspace}/takeover_subzy.txt
+    outputs:
+      file: '{workspace}/takeover_subzy.txt'
+    optional: true
+  - id: subjack
+    shell: true
+    run: subjack -w {workspace}/subdomains_all_resolved.txt -t 100 -timeout 30 -ssl -a -o {workspace}/takeover_subjack.txt 2>/dev/null; touch {workspace}/takeover_subjack.txt
+    outputs:
+      file: '{workspace}/takeover_subjack.txt'
+    optional: true
+  - id: dnstake
+    shell: true
+    run: dnstake -f {workspace}/subdomains_all_resolved.txt -o {workspace}/takeover_dnstake.txt 2>/dev/null; touch {workspace}/takeover_dnstake.txt
+    outputs:
+      file: '{workspace}/takeover_dnstake.txt'
+    optional: true
+- id: merge_takeover
+  name: merge takeover findings → filter VULNERABLE entries
+  depends_on:
+  - takeover_check
+  when: '{vars.run_takeover}'
+  run_on_failed_deps: true
+  shell: true
+  run: |
+    (
+      cat {workspace}/takeover_subzy.txt 2>/dev/null || true
+      cat {workspace}/takeover_subjack.txt 2>/dev/null || true
+      cat {workspace}/takeover_dnstake.txt 2>/dev/null || true
+    ) | grep -iE '\[Vulnerable\]|VULNERABLE:|found.*takeover|takeover.*found|\[FOUND\]' \
+      | grep -iv 'not vulnerable\|not found\|\[Not ' \
+      | sort -u > {workspace}/takeover_findings.txt
+    touch {workspace}/takeover_findings.txt
+    VULN_COUNT=$(wc -l < {workspace}/takeover_findings.txt)
+    printf 'Takeover findings: %s potential targets\n' "$VULN_COUNT" >> {workspace}/resolve_stats.txt
+  outputs:
+    file: '{workspace}/takeover_findings.txt'
+- id: s3scanner_buckets
+  name: '[cloud] s3scanner — enumerate exposed S3/GCS/Azure cloud storage buckets'
+  depends_on:
+  - dnsx_resolve
+  when: '{vars.run_s3scan}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 15m
+  run: "STEM=$(echo {target} | sed 's/\\.[^.]*$//'); printf '%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' \\\n  \"{target}\" \"$STEM\" \\\n  \"$STEM-assets\" \"$STEM-static\" \"$STEM-media\" \"$STEM-uploads\" \\\n  \"$STEM-backup\" \"$STEM-data\" \"$STEM-files\" \"$STEM-public\" \\\n  \"$STEM-private\" \"$STEM-dev\" \"$STEM-staging\" \"$STEM-prod\" \"$STEM-logs\" \\\n> {workspace}/bucket_names.txt; s3scanner -bucket-file {workspace}/bucket_names.txt -json -threads 10 2>/dev/null > {workspace}/s3scanner.json || true; touch {workspace}/s3scanner.json; EXPOSED=$(jq -r 'select(.bucket.exists==1) | .bucket.name' {workspace}/s3scanner.json 2>/dev/null | wc -l || echo 0); printf 'Cloud storage buckets exposed: %s\\n' \"$EXPOSED\" >> {workspace}/resolve_stats.txt || true"
+  outputs:
+    file: '{workspace}/s3scanner.json'
+- id: nuclei_hosts
+  name: nuclei — live HTTP hosts (full template set, skip dns)
+  depends_on:
+  - httpx
+  when: '{vars.run_nuclei}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 3h
+  run: nuclei -l {workspace}/httpx.jsonl -nmhe -jsonl -silent -rl {vars.nuclei_rl} -c {vars.nuclei_concurrency} -timeout {vars.nuclei_timeout} -etags dns -o {workspace}/nuclei_hosts.jsonl 2>/dev/null; touch {workspace}/nuclei_hosts.jsonl
+  outputs:
+    nuclei_jsonl: '{workspace}/nuclei_hosts.jsonl'
+- id: nuclei_misconfig
+  name: nuclei — misconfigurations + exposures on all resolved hosts
+  depends_on:
+  - merge_all_resolved
+  when: '{vars.run_nuclei}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 2h
+  run: nuclei -l {workspace}/subdomains_all_resolved.txt -nmhe -jsonl -silent -rl {vars.nuclei_rl} -c {vars.nuclei_concurrency} -timeout {vars.nuclei_timeout} -tags misconfig,exposure,dns,network -o {workspace}/nuclei_misconfig.jsonl 2>/dev/null; touch {workspace}/nuclei_misconfig.jsonl
+  outputs:
+    nuclei_misconfig_jsonl: '{workspace}/nuclei_misconfig.jsonl'
+- id: afrog_scan
+  name: afrog — PoC-based vuln scan (complements nuclei)
+  depends_on:
+  - httpx
+  when: '{vars.run_afrog}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 2h
+  run: afrog -l {workspace}/httpx.jsonl -severity critical,high,medium -json-output {workspace}/afrog.jsonl 2>/dev/null; touch {workspace}/afrog.jsonl
+  outputs:
+    afrog_jsonl: '{workspace}/afrog.jsonl'
+- id: nuclei_naabu_ports
+  name: nuclei — non-HTTP ports discovered by naabu (network templates)
+  depends_on:
+  - naabu_topscan
+  when: '{vars.run_nuclei} && {vars.run_portscan}'
+  shell: true
+  optional: true
+  skip_if_exists: true
+  timeout: 60m
+  run: |
+    touch {workspace}/naabu_nonweb_targets.txt {workspace}/nuclei_ports.jsonl
+    test -f {workspace}/naabu.jsonl || exit 0
+    jq -r '"\(.host // .ip):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null \
+      | grep -vE ':(80|443|8080|8443|8888)$' | sort -u > {workspace}/naabu_nonweb_targets.txt
+    test -s {workspace}/naabu_nonweb_targets.txt && nuclei \
+      -l {workspace}/naabu_nonweb_targets.txt \
+      -nmhe -jsonl -silent \
+      -rl 50 -c 10 -timeout 15 \
+      -tags network,dns,ssl,ssh,ftp,smtp \
+      -o {workspace}/nuclei_ports.jsonl 2>/dev/null || true
+  outputs:
+    file: '{workspace}/nuclei_ports.jsonl'
+- id: final_report
+  name: generate final recon summary report
+  depends_on:
+  - resolve_stats
+  - merge_all_resolved
+  - asn_discover
+  - tlsx_san_mine
+  - cdncheck_classify
+  - merge_crawl_urls
+  - subjs_extract
+  - jsapiscan_scan
+  - takeover_check
+  - s3scanner_buckets
+  - nuclei_hosts
+  - nuclei_misconfig
+  - afrog_scan
+  - nuclei_naabu_ports
+  - screenshot
+  run_on_failed_deps: true
+  shell: true
+  run: 'mkdir -p {workspace}/report;
+
+    PASSIVE=$(wc -l < {workspace}/passive_merged.txt               2>/dev/null || echo 0); CANDIDATES=$(wc -l < {workspace}/subdomains_all.txt             2>/dev/null || echo 0); RESOLVED=$(wc -l < {workspace}/subdomains_resolved.txt          2>/dev/null || echo 0); TLSX_NEW=$(wc -l < {workspace}/tlsx_new_subs.txt                2>/dev/null || echo 0); TLSX_RESOLVED=$(wc -l < {workspace}/subdomains_tlsx_resolved.txt 2>/dev/null || echo 0); TOTAL_RESOLVED=$(wc -l < {workspace}/subdomains_all_resolved.txt 2>/dev/null || echo 0); LIVE_HTTP=$(wc -l < {workspace}/live_urls.txt                    2>/dev/null || echo 0); OPEN_PORTS=$(test -f {workspace}/naabu.jsonl && jq -r ''"\(.host):\(.port)"'' {workspace}/naabu.jsonl 2>/dev/null | sort -u | wc -l || echo 0); ASN_CIDRS=$(wc -l < {workspace}/asn_ipv4_cidrs.txt              2>/dev/null || echo 0); CDN_HOSTS=$(jq -r ''select(.cdn==true)  | .host'' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0); ORIGIN_HOSTS=$(jq -r ''select(.cdn != true and .waf != true and .cloud != true) | .input'' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0); URLS=$(wc -l < {workspace}/all_urls.txt                          2>/dev/null || echo 0); JS_FILES=$(wc -l < {workspace}/js_urls.txt                       2>/dev/null || echo 0); JS_APIS=$(wc -l < {workspace}/jsapiscan_results.txt              2>/dev/null || echo 0); JS_SUBS=$(wc -l < {workspace}/js_subs.txt                        2>/dev/null || echo 0); NUCLEI_CRIT=$(jq -r ''select(.info.severity=="critical") | .host'' {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0); NUCLEI_HIGH=$(jq -r ''select(.info.severity=="high")     | .host'' {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0); NUCLEI_MED=$(jq -r  ''select(.info.severity=="medium")   | .host'' {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0); TAKEOVER=$(wc -l < {workspace}/takeover_findings.txt             2>/dev/null || echo 0); AFROG_TOTAL=$(jq -r ''.["poc-id"]'' {workspace}/afrog.jsonl        2>/dev/null | wc -l || echo 0); BUCKETS=$(jq -r ''select(.bucket.exists==1) | .bucket.name'' {workspace}/s3scanner.json 2>/dev/null | wc -l || echo 0);
+
+    cat > {workspace}/report/summary.md << EOFMD # K1NZR3C0N — Full Recon Report **Target:** {target}
+
+    ## Asset Discovery | Metric | Count | |--------|-------| | Passive sources unique | $PASSIVE | | All subdomain candidates | $CANDIDATES | | DNS resolved (live) | $RESOLVED | | TLS SAN new discoveries | $TLSX_NEW | | TLS SAN resolved | $TLSX_RESOLVED | | **Total resolved hosts** | **$TOTAL_RESOLVED** | | Live HTTP endpoints | $LIVE_HTTP | | Open ports found | $OPEN_PORTS | | ASN/IP CIDR ranges | $ASN_CIDRS | | CDN hosts | $CDN_HOSTS | | Origin (non-CDN) hosts | $ORIGIN_HOSTS |
+
+    ## URL & JS Intelligence | Metric | Count | |--------|-------| | Total URLs collected | $URLS | | JS files discovered | $JS_FILES | | JS API endpoints | $JS_APIS | | New subs from JS | $JS_SUBS |
+
+    ## Vulnerability Findings | Severity | Count | |----------|-------| | Critical  | $NUCLEI_CRIT | | High      | $NUCLEI_HIGH | | Medium    | $NUCLEI_MED | | Afrog PoC | $AFROG_TOTAL | | Takeover candidates | $TAKEOVER | | Cloud buckets exposed | $BUCKETS |
+
+    ## Key Output Files - \`subdomains_all_resolved.txt\` — all live DNS-resolved hosts (DNS + TLS) - \`httpx.jsonl\` — live HTTP hosts with title/tech fingerprint - \`naabu.jsonl\` — port scan results (JSONL) - \`cdncheck.jsonl\` — CDN classification per host - \`all_urls.txt\` — all collected URLs (passive + katana + waymore) - \`js_urls.txt\` — JavaScript file URLs - \`jsapiscan_results.txt\` — API endpoints from JS analysis - \`nuclei_hosts.jsonl\` — nuclei findings on live HTTP - \`nuclei_misconfig.jsonl\` — misconfig/exposure on all hosts - \`afrog.jsonl\` — afrog PoC-based findings - \`takeover_findings.txt\` — subdomain takeover candidates - \`s3scanner.json\` — cloud storage bucket scan results - \`asn_ipv4_cidrs.txt\` — IPv4 CIDR ranges for target org (metabigor) - \`screenshots/\` + \`gallery.html\` — visual recon gallery EOFMD
+
+    printf ''\n=== RECON COMPLETE ===\n''; cat {workspace}/report/summary.md'
+  outputs:
+    summary: '{workspace}/report/summary.md'

@@ -1,4 +1,0 @@
-# Dirsearch started Tue Feb 10 19:22:19 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://serverlist.piaservers.net -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/serverlist.piaservers.net/20260210-191814/dirsearch.txt
-
-502     6KB  https://serverlist.piaservers.net/admin_pmmaint.html
-200     6KB  https://serverlist.piaservers.net/proxy

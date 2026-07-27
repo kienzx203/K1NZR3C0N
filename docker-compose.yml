@@ -1,0 +1,86 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build: .
+    image: k1nzr3c0n:latest
+    ports:
+      - "${HOST:-127.0.0.1}:${PORT:-8000}:8000"
+    volumes:
+      - ./runs:/app/runs
+      - ./workflows:/app/workflows
+      - ./.qwen/skills:/root/.qwen/skills:ro
+      # Uncomment to use host wordlists:
+      # - ${WORDLISTS_DIR:-./wordlists}:/app/wordlists:ro
+    environment:
+      - K1NZR3C0N_BASE=/app
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    image: k1nzr3c0n:latest
+    command: celery -A k1nzr3c0n.tasks worker --loglevel=info --concurrency=4
+    volumes:
+      - ./runs:/app/runs
+      - ./workflows:/app/workflows
+      - ./.qwen/skills:/root/.qwen/skills:ro
+      - nuclei_data:/root/nuclei-templates
+      # - ${WORDLISTS_DIR:-./wordlists}:/app/wordlists:ro
+    environment:
+      - K1NZR3C0N_BASE=/app
+      - REDIS_URL=redis://redis:6379/0
+      # - K1NZR3C0N_WEBHOOK_URL=https://hooks.slack.com/services/...
+      # Optional: GitHub personal access token — raises API rate limit from 60 to 5,000 req/hr.
+      # Required only if you run tool checks+updates more than once per hour without a token.
+      # Create at: https://github.com/settings/tokens (no scopes needed for public repos)
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A k1nzr3c0n.tasks inspect ping -d celery@$$HOSTNAME --timeout 5 2>/dev/null | grep -q OK"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
+  beat:
+    image: k1nzr3c0n:latest
+    command: celery -A k1nzr3c0n.tasks beat --loglevel=info --scheduler celery.beat:PersistentScheduler --schedule /var/lib/celerybeat/schedule
+    volumes:
+      - ./runs:/app/runs              # required: beat reads DB to dispatch schedules
+      - ./workflows:/app/workflows
+      - beat_data:/var/lib/celerybeat
+    environment:
+      - K1NZR3C0N_BASE=/app
+      - REDIS_URL=redis://redis:6379/0
+      # Optional: Slack/Discord webhook URL for run completion alerts
+      # - K1NZR3C0N_WEBHOOK_URL=https://hooks.slack.com/services/...
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  redis_data:
+  beat_data:
+  nuclei_data:

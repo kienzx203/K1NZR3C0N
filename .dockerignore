@@ -1,0 +1,15 @@
+.git
+.vscode
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+runs/
+reports/
+*.state
+.tmp_*
+*.md
+docker-compose.yml
+Sliver_TT.md
+file.js
+bypass.js

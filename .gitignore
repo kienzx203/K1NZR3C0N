@@ -1,0 +1,26 @@
+# Secrets
+.env
+
+# Run outputs & DB
+runs/*
+!runs/.gitkeep
+
+# Reports
+reports/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Frontend build artifacts
+frontend/node_modules/
+src/k1nzr3c0n/static/assets/
+
+# Feroxbuster state files
+*.state
+
+# OS
+.DS_Store
+Thumbs.db

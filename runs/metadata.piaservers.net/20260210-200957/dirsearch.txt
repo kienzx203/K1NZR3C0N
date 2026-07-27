@@ -1,4 +1,0 @@
-# Dirsearch started Tue Feb 10 20:16:40 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://metadata.piaservers.net -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/metadata.piaservers.net/20260210-200957/dirsearch.txt
-
-502     6KB  https://metadata.piaservers.net/actuator/;/features
-200     0B   https://metadata.piaservers.net/soap/

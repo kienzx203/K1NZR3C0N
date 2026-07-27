@@ -1,3 +1,0 @@
-/db.sql.tar          [31m (Status: 525)[0m [Size: 15]
-/cdn-cgi/trace       [32m (Status: 200)[0m [Size: 230]
-/cdn-cgi/l/email-protection[32m (Status: 200)[0m [Size: 4694]

@@ -1,5 +1,0 @@
-wl-partner.piaservers.com
-staging-ok.piaservers.com
-dev-ok.piaservers.com
-ok.piaservers.com
-offers-lp.piaservers.com

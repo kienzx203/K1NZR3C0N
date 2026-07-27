@@ -1,6 +1,0 @@
-https://serverlist.piaservers.net
-https://https-au-melbourne.regions.cluster.piaservers.net
-https://stagingvirginia4.nodes.cluster.piaservers.net
-https://kapps-releases.piaservers.net
-https://metadata.piaservers.net
-http://stagingvirginia3.nodes.cluster.piaservers.net

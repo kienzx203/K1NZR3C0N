@@ -1,4 +1,0 @@
-# Dirsearch started Mon Feb  9 22:37:59 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://connectivitycheck.privateinternetaccess.com -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/connectivitycheck.privateinternetaccess.com/20260209-223234/dirsearch.txt
-
-502     6KB  https://connectivitycheck.privateinternetaccess.com/.functions
-200     0B   https://connectivitycheck.privateinternetaccess.com/soap/

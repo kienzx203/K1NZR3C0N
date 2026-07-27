@@ -61,8 +61,10 @@ def _format_finding(item: dict[str, Any]) -> str:
     return f"- [{_severity(item)}] {_template_id(item)} :: {matched}"
 
 
-def generate_report(jsonl_path: Path, out_dir: Path) -> None:
-    items = _load_jsonl(jsonl_path)
+def generate_report(jsonl_paths: list[Path], out_dir: Path) -> None:
+    items = []
+    for p in jsonl_paths:
+        items.extend(_load_jsonl(p))
     out_dir.mkdir(parents=True, exist_ok=True)
 
     by_host: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -103,7 +105,7 @@ def generate_report(jsonl_path: Path, out_dir: Path) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Generate report from nuclei JSONL output.')
-    parser.add_argument('--input', required=True, help='Path to nuclei JSONL file')
+    parser.add_argument('--input', required=True, nargs='+', help='Path(s) to nuclei JSONL files')
     parser.add_argument('--out', required=True, help='Output directory')
     return parser
 
@@ -111,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    generate_report(Path(args.input), Path(args.out))
+    generate_report([Path(p) for p in args.input], Path(args.out))
     return 0
 
 

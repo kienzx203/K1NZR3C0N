@@ -1,3 +1,0 @@
-# Dirsearch started Tue Feb 10 10:54:08 2026 as: /usr/lib/python3/dist-packages/dirsearch/dirsearch.py -u https://dip.privateinternetaccess.com -x 400,404,403 -o /mnt/f/web/web/K1NZR3C0N/runs/dip.privateinternetaccess.com/20260210-104603/dirsearch.txt
-
-200    15B   https://dip.privateinternetaccess.com/ping

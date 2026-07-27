@@ -1,4 +1,0 @@
-/track               [32m (Status: 200)[0m [Size: 1]
-/elb-status          [32m (Status: 200)[0m [Size: 5]
-/cdn-cgi/l/email-protection[32m (Status: 200)[0m [Size: 4694]
-/cdn-cgi/trace       [32m (Status: 200)[0m [Size: 230]

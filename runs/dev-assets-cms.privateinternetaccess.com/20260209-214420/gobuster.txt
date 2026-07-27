@@ -1,8 +1,0 @@
-/.gitignore          [32m (Status: 200)[0m [Size: 14]
-/soap/               [32m (Status: 200)[0m [Size: 0]
-/soap/api-docs       [32m (Status: 200)[0m [Size: 0]
-/soap/swagger        [32m (Status: 200)[0m [Size: 0]
-/deleted             [32m (Status: 200)[0m [Size: 103035]
-/soap                [32m (Status: 200)[0m [Size: 0]
-/cdn-cgi/trace       [32m (Status: 200)[0m [Size: 234]
-/cdn-cgi/l/email-protection[32m (Status: 200)[0m [Size: 4694]

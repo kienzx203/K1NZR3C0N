@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0d1117; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #58a6ff44; }
+}
+
+@layer components {
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider;
+  }
+  .badge-queued  { @apply bg-[#1c2128] text-[#8b949e]; }
+  .badge-running { @apply bg-[#1c2d1e] text-[#3fb950] animate-pulse; }
+  .badge-completed { @apply bg-[#1c2d1e] text-[#3fb950]; }
+  .badge-failed  { @apply bg-[#2d1c1c] text-[#f85149]; }
+  .badge-cancelled { @apply bg-[#1c2128] text-[#8b949e]; }
+  .badge-paused    { @apply bg-[#2d2408] text-[#f0b429]; }
+
+  .card {
+    @apply bg-[#161b22] border border-[#30363d] rounded-lg;
+  }
+  .btn {
+    @apply px-3 py-1.5 rounded text-xs font-medium transition-all duration-150 cursor-pointer border border-transparent outline-none;
+  }
+  .btn-primary { @apply bg-[#238636] text-white border-[#2ea043] hover:brightness-110; }
+  .btn-danger  { @apply bg-[#6e2020] text-[#f85149] border-[#f8514944] hover:bg-[#8b2020]; }
+  .btn-ghost   { @apply bg-transparent text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#161b22]; }
+  .btn-success { @apply bg-[#1a3a24] text-[#3fb950] border-[#3fb95066] hover:bg-[#1f4a2d]; }
+  .btn-warning { @apply bg-[#2d2408] text-[#f0b429] border-[#f0b42966] hover:bg-[#3d3108]; }
+
+  .input {
+    @apply w-full bg-[#0d1117] border border-[#30363d] text-[#e6edf3] rounded px-3 py-2 text-xs
+           focus:outline-none focus:border-[#58a6ff] transition-colors;
+  }
+  .label { @apply block text-[10px] uppercase tracking-wider text-[#8b949e] mb-1; }
+
+  .log-ok    { color: #3fb950; }
+  .log-info  { color: #58a6ff; }
+  .log-warn  { color: #f0b429; }
+  .log-error { color: #f85149; }
+  .log-plain { color: #8b949e; }
+  .log-dim   { color: #484f58; }
+}
