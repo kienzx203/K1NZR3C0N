@@ -7,3 +7,4 @@ SQLAlchemy>=2.0
 croniter>=2.0
 ptyprocess>=0.7
 openai>=1.0
+python-multipart

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..config import REDIS_URL, STATIC_DIR
 from ..db import RunLog, init_db
-from .routes import files, findings, keys, reports, runs, terminal, tools, workflows
+from .routes import files, findings, keys, reports, runs, terminal, tools, upload, workflows
 
 
 @asynccontextmanager
@@ -38,6 +38,7 @@ app.include_router(findings.router,  prefix=_V1)
 app.include_router(reports.router,   prefix=_V1)
 app.include_router(keys.router,      prefix=_V1)
 app.include_router(tools.router,     prefix=_V1)
+app.include_router(upload.router,    prefix=_V1)
 app.include_router(terminal.router,  prefix="/ws")
 
 # Keep /api/* aliases for backwards compatibility during transition

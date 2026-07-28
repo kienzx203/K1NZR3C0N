@@ -9,12 +9,14 @@ import Keys from './pages/Keys.jsx'
 import Tools from './pages/Tools.jsx'
 import Workflows from './pages/Workflows.jsx'
 import WorkflowEditor from './pages/WorkflowEditor.jsx'
+import Upload from './pages/Upload.jsx'
 
 const NAV = [
   { to: '/',           label: '◆ Dashboard',  exact: true },
   { to: '/runs',       label: '▸ Runs' },
   { to: '/workflows',  label: '◈ Workflows' },
   { to: '/findings',   label: '⚑ Findings' },
+  { to: '/upload',     label: '↑ Upload' },
   { to: '/terminal',   label: '⬡ Terminal' },
   { to: '/keys',       label: '⚷ Keys' },
   { to: '/tools',      label: '⚙ Tools' },
@@ -61,6 +63,7 @@ export default function App() {
           <Route path="/workflows"             element={<Workflows />} />
           <Route path="/workflows/:name"       element={<WorkflowEditor />} />
           <Route path="/findings"              element={<Findings />} />
+          <Route path="/upload"                element={<Upload />} />
           <Route path="/terminal"              element={<Terminal />} />
           <Route path="/keys"                  element={<Keys />} />
           <Route path="/tools"                 element={<Tools />} />
