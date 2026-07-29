@@ -204,7 +204,7 @@ grep -hoP '(?:fetch|axios\.(?:get|post|put|patch|delete)|http\.(?:get|post)|
 
 echo ""
 echo "=== URL construction patterns ==="
-grep -hoP '(?:baseURL|apiUrl|API_URL|BASE_URL|endpoint|url|path)\s*[=:]\s*["\x27`][^"\x27`]+["\x27`]' \
+grep -ihoP '(?:baseURL|apiUrl|API_URL|BASE_URL|endpoint|url|path|serverUrl|backendUrl|apiBase|apiEndpoint|serviceUrl|internalUrl|stagingUrl|vpnUrl)\s*[=:]\s*["\x27`][^"\x27`]+["\x27`]' \
   $JS_DIR/*.js 2>/dev/null | sort -u | head -30
 
 echo ""
@@ -469,53 +469,430 @@ jq -r '.[] | select(.File | test("\\.js$")) |
   $W/gitleaks_results.json 2>/dev/null
 ```
 
-### 5.2 Manual Regex trên Downloaded JS
+### 5.2 Manual Regex — Cloud, Keys, Tokens
 
 ```bash
 JS_DIR=$WORKSPACE/js_files
 
-echo "=== API Keys & Tokens ==="
-grep -hoP '(?:api[_-]?key|apikey|api[_-]?secret|access[_-]?token|
-            auth[_-]?token|bearer[_-]?token)\s*[=:]\s*["\x27][a-zA-Z0-9_\-\.]{10,}["\x27]' \
-  $JS_DIR/*.js 2>/dev/null -i | sort -u
+echo "=== Hardcoded JWT tokens (eyJ...) ==="
+grep -hoP 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | while read jwt; do
+    header=$(echo "$jwt" | cut -d. -f1 | base64 -d 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('alg','?'))" 2>/dev/null)
+    echo "  ALG=$header TOKEN=${jwt:0:60}..."
+  done
 
 echo ""
 echo "=== Cloud Provider Keys ==="
-# AWS
-grep -hoP '(?:AKIA|ASIA)[0-9A-Z]{16}' $JS_DIR/*.js 2>/dev/null | sort -u
-# GCP
-grep -hoP 'AIza[0-9A-Za-z_\-]{35}' $JS_DIR/*.js 2>/dev/null | sort -u
-# Azure
+# AWS Access Key
+grep -hoP '(?:AKIA|ASIA|AROA|AIDA|ANPA|ANVA|AIPA)[0-9A-Z]{16}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  AWS_KEY: /'
+# AWS Secret Key (next line after access key, or assigned)
+grep -ihoP 'aws[_-]?secret[_-]?(?:access[_-]?)?key\s*[=:]\s*["\x27`][a-zA-Z0-9+/]{40}["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  AWS_SECRET: /'
+# GCP API key
+grep -hoP 'AIza[0-9A-Za-z_\-]{35}' $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  GCP: /'
+# Azure client secret / subscription id
 grep -hoP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
-  $JS_DIR/*.js 2>/dev/null | head -5
-# GitHub
-grep -hoP 'gh[pousr]_[A-Za-z0-9]{36,}' $JS_DIR/*.js 2>/dev/null | sort -u
-# Slack
-grep -hoP 'xox[baprs]-[0-9A-Za-z\-]+' $JS_DIR/*.js 2>/dev/null | sort -u
+  $JS_DIR/*.js 2>/dev/null | grep -v '00000000-' | head -5 | sed 's/^/  AZURE_UUID: /'
+# GitHub tokens
+grep -hoP 'gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  GITHUB: /'
+
+echo ""
+echo "=== SaaS / Platform API Keys ==="
 # Stripe
-grep -hoP '(?:sk|pk)_(?:live|test)_[0-9a-zA-Z]{24,}' $JS_DIR/*.js 2>/dev/null | sort -u
+grep -hoP '(?:sk|pk|rk)_(?:live|test)_[0-9a-zA-Z]{24,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  STRIPE: /'
+# Twilio
+grep -hoP 'AC[a-z0-9]{32}|SK[a-z0-9]{32}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  TWILIO: /'
+grep -ihoP 'twilio[_-]?(?:account[_-]?sid|auth[_-]?token)\s*[=:]\s*["\x27][a-zA-Z0-9]{32,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  TWILIO_CFG: /'
+# SendGrid
+grep -hoP 'SG\.[a-zA-Z0-9_\-]{22,}\.[a-zA-Z0-9_\-]{43,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  SENDGRID: /'
+# Mailgun
+grep -hoP 'key-[a-z0-9]{32}' $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  MAILGUN: /'
+grep -ihoP 'mailgun[_-]?(?:api[_-]?key|private[_-]?key)\s*[=:]\s*["\x27][^"\x27\s]{10,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  MAILGUN_CFG: /'
+# Slack
+grep -hoP 'xox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  SLACK: /'
+# Discord
+grep -hoP '(?:MTE|MTI|MTM|MTQ|MTU|MTY|Mj)[a-zA-Z0-9_\-]{20,}\.[a-zA-Z0-9_\-]{6,}\.[a-zA-Z0-9_\-]{27,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  DISCORD_TOKEN: /'
+grep -hoP 'https://discord(?:app)?\.com/api/webhooks/[0-9]+/[a-zA-Z0-9_\-]+' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  DISCORD_WEBHOOK: /'
+# Telegram Bot
+grep -hoP '[0-9]{8,10}:AA[a-zA-Z0-9_\-]{33}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  TELEGRAM_BOT: /'
+# Mapbox
+grep -hoP 'pk\.[a-zA-Z0-9]{60,}' $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  MAPBOX: /'
+# Algolia
+grep -ihoP 'algolia[a-z_]*\s*[=:]\s*["\x27][A-Z0-9]{32}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  ALGOLIA: /'
+# Sentry DSN
+grep -hoP 'https://[a-f0-9]{32}@(?:o[0-9]+\.)?ingest\.sentry\.io/[0-9]+' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  SENTRY_DSN: /'
+# Cloudinary
+grep -ihoP 'cloudinary://[a-zA-Z0-9_]+:[a-zA-Z0-9_]+@[a-zA-Z0-9_]+' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  CLOUDINARY: /'
+grep -ihoP '(?:cloudinary[_-]?(?:api[_-]?(?:key|secret)|cloud[_-]?name))\s*[=:]\s*["\x27][^"\x27\s]{4,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  CLOUDINARY_CFG: /'
+# PayPal / Braintree
+grep -ihoP '(?:paypal|braintree)[_-]?(?:client[_-]?(?:id|secret)|token)\s*[=:]\s*["\x27][^"\x27\s]{10,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  PAYPAL: /'
+# Pusher
+grep -ihoP 'pusher[_-]?(?:app[_-]?(?:id|key|secret)|cluster)\s*[=:]\s*["\x27][^"\x27\s]{4,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  PUSHER: /'
+# HubSpot
+grep -hoP '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+  $JS_DIR/*.js 2>/dev/null | xargs -I{} sh -c 'grep -l "{}" '"$JS_DIR"'/*.js 2>/dev/null' | \
+  xargs grep -l 'hubspot' 2>/dev/null | head -3 | sed 's/^/  HUBSPOT_UUID: /'
+# Shopify / WooCommerce
+grep -ihoP 'shopify[_-]?(?:api[_-]?key|secret|access[_-]?token)\s*[=:]\s*["\x27][^"\x27\s]{10,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  SHOPIFY: /'
+# npm / registry token
+grep -hoP 'npm_[a-zA-Z0-9]{36}' $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  NPM: /'
 
 echo ""
-echo "=== Internal Endpoints (base URLs) ==="
-grep -hoP '(?:baseURL|BASE_URL|API_BASE|apiBase|backendUrl|serverUrl)\s*[=:]\s*["\x27`][^"\x27`]+["\x27`]' \
+echo "=== Connection Strings & DSN ==="
+grep -ihoP '(?:mongodb(?:\+srv)?|postgresql|postgres|mysql|redis|amqp|kafka|elasticsearch|neo4j|cassandra)://[^\s"'\''`>]+' \
   $JS_DIR/*.js 2>/dev/null | sort -u
 
 echo ""
-echo "=== Database / Service Connection Strings ==="
-grep -hoP '(?:mongodb|postgresql|mysql|redis|amqp|kafka)://[^\s"\x27`]+' \
+echo "=== Private Keys & Certificates ==="
+grep -hoP '-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----' $JS_DIR/*.js 2>/dev/null
+grep -l 'BEGIN PRIVATE KEY\|BEGIN RSA PRIVATE KEY' $JS_DIR/*.js 2>/dev/null
+```
+
+### 5.3 Keyword-Based Credential Sweep (Comprehensive)
+
+Sweep rộng dùng keyword pattern — bắt tất cả assignment/config dạng `key = "value"` hoặc `key: "value"` trong JS:
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+# ── Master keyword pattern ────────────────────────────────────────────────────
+# Matches: variable assignments, object keys, config entries
+# Pattern: (keyword)(optional suffix)(= or :)("value" or 'value' or `value`)
+KW='api[_-]?key|auth|token|secret|password|username|user|pass|endpoint|url|firebase|aws|heroku|database|sql|internal|vpn|staging|debug'
+
+echo "=== [1] Key=Value assignments (var KEY = \"...\") ==="
+grep -ihoP "(?:${KW})[a-zA-Z0-9_-]*\s*=\s*[\"'\`][^\"'\`\s]{4,80}[\"'\`]" \
+  $JS_DIR/*.js 2>/dev/null \
+  | grep -ivE '(function|class|return|import|export|require|typeof|instanceof)' \
+  | sort -u
+
+echo ""
+echo "=== [2] Object/config keys (key: \"value\") ==="
+grep -ihoP "[\"'\`]?(?:${KW})[a-zA-Z0-9_-]*[\"'\`]?\s*:\s*[\"'\`][^\"'\`\s]{4,80}[\"'\`]" \
+  $JS_DIR/*.js 2>/dev/null \
+  | grep -ivE '(//|/\*)' \
+  | sort -u
+
+echo ""
+echo "=== [3] process.env / window.__ENV__ / config object ==="
+grep -ihoP "(?:process\.env\.|window\.__(?:ENV|CONFIG)__\.|config\.)\s*[\"'\`]?(?:${KW})[a-zA-Z0-9_-]*[\"'\`]?" \
   $JS_DIR/*.js 2>/dev/null | sort -u
 
 echo ""
-echo "=== Private keys / Certificates ==="
-grep -hoP '-----BEGIN (?:RSA |EC )?PRIVATE KEY-----' $JS_DIR/*.js 2>/dev/null
-grep -l 'BEGIN PRIVATE KEY' $JS_DIR/*.js 2>/dev/null
+echo "=== [4] Firebase config block ==="
+grep -ihoP 'firebase[A-Za-z]*\s*[=:]\s*\{[^}]{20,400}\}' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/},/}\n/g' | head -10
+# Firebase individual fields
+grep -ihoP '(?:apiKey|authDomain|databaseURL|projectId|storageBucket|messagingSenderId|appId|measurementId)\s*:\s*["\x27][^"\x27]+["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sort -u
+
+echo ""
+echo "=== [5] AWS config fields ==="
+grep -ihoP '(?:aws[_-]?(?:access[_-]?key|secret[_-]?(?:access[_-]?)?key|session[_-]?token|region|bucket|account[_-]?id)|accessKeyId|secretAccessKey|sessionToken)\s*[=:]\s*["\x27`][^"\x27`\s]{4,}["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+
+echo ""
+echo "=== [6] Database / SQL connection ==="
+grep -ihoP '(?:database[_-]?(?:url|host|name|user|pass|password)|db[_-]?(?:url|host|name|pass)|sql[_-]?(?:url|host|pass)|connection[_-]?string)\s*[=:]\s*["\x27`][^"\x27`\s]{4,}["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+# Connection string URI format
+grep -ihoP '(?:mysql|postgresql|postgres|mongodb|sqlite|mssql|oracle)://[^\s"'\''`>]+' \
+  $JS_DIR/*.js 2>/dev/null | sort -u
+
+echo ""
+echo "=== [7] Internal / VPN / Staging URLs ==="
+grep -ihoP '(?:internal|vpn|staging|dev|beta|preprod)[a-zA-Z0-9_-]*\s*[=:]\s*["\x27`]https?://[^"\x27`\s]+["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+# Also find internal hostnames (non-public TLD or internal- prefix)
+grep -ihoP '["\x27`]https?://(?:internal|vpn|staging|dev|beta|api-internal|admin)[.\-][^"\x27`\s]+["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null | sort -u
+
+echo ""
+echo "=== [8] Debug / test flags hardcoded true ==="
+grep -ihoP '(?:debug|isDebug|debugMode|isDev|isTest|isSandbox|devMode|testMode|staging|enableLogging|verbose)\s*[=:]\s*(?:true|1|"true"|'\''true'\'')' \
+  $JS_DIR/*.js 2>/dev/null | sort -u
+
+echo ""
+echo "=== [9] Username / password pairs ==="
+grep -ihoP '(?:username|user[_-]?name|user[_-]?id|login|email)\s*[=:]\s*["\x27][^"\x27\s@]{3,40}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null -i | grep -iv '(placeholder|example|test|foo|bar|user@)' | sort -u
+grep -ihoP '(?:password|passwd|pwd|pass[_-]?word)\s*[=:]\s*["\x27][^"\x27\s]{4,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+
+echo ""
+echo "=== [10] Heroku config ==="
+grep -ihoP '(?:heroku[_-]?(?:api[_-]?key|token|app[_-]?name)|HEROKU[_A-Z]*)\s*[=:]\s*["\x27`][^"\x27`\s]{4,}["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+
+echo ""
+echo "=== [11] Generic secret sweep — high-entropy values ==="
+# Catch any remaining key=value where value looks like a credential (long alphanumeric)
+grep -ihoP "(?:${KW})[a-zA-Z0-9_-]{0,20}\s*[=:]\s*[\"'\`][a-zA-Z0-9+/=_\-\.]{20,}[\"'\`]" \
+  $JS_DIR/*.js 2>/dev/null \
+  | grep -ivE '(placeholder|example|your[_-]?|<[A-Z]+>|xxx|aaa|test123|changeme|dummy|lorem|ipsum|undefined|null)' \
+  | sort -u
 ```
 
 ---
 
-## Phase 6 — Cross-Correlation & Attack Path
+## Phase 6 — DOM XSS & Client-Side Vulnerabilities
 
-### 6.1 Validate Extracted Endpoints Against Alive Hosts
+Đây là category thường bị bỏ sót trong recon nhưng có thể tạo ra P1 report.
+
+### 6.1 DOM XSS Sinks
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== Dangerous Sinks (DOM XSS) ==="
+# innerHTML / outerHTML — direct sink
+grep -ihoP '\.innerHTML\s*[+=]|\.outerHTML\s*=' $JS_DIR/*.js 2>/dev/null | sort -u | head -20
+# document.write / writeln
+grep -ihoP 'document\.write(?:ln)?\s*\(' $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+# insertAdjacentHTML
+grep -ihoP '\.insertAdjacentHTML\s*\(' $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+# eval() — code execution
+grep -ihoP '\beval\s*\([^)]{0,200}\)' $JS_DIR/*.js 2>/dev/null \
+  | grep -iv '// eval' | sort -u | head -10
+# setTimeout / setInterval with string arg
+grep -ihoP '(?:setTimeout|setInterval)\s*\(\s*["\x27`]' $JS_DIR/*.js 2>/dev/null | head -10
+# Function constructor
+grep -ihoP 'new\s+Function\s*\(' $JS_DIR/*.js 2>/dev/null | sort -u | head -5
+
+echo ""
+echo "=== User-Controlled Sources flowing to sinks ==="
+# location.search / hash used in innerHTML
+grep -hoP 'location\.(?:search|hash|href|pathname)[^;]{0,300}innerHTML' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+# URLSearchParams used as DOM value
+grep -hoP 'URLSearchParams[^;]{0,200}(?:innerHTML|document\.write|eval)' \
+  $JS_DIR/*.js 2>/dev/null | head -5
+# decodeURIComponent → sink
+grep -hoP 'decodeURI(?:Component)?\s*\([^)]{0,100}\)[^;]{0,200}innerHTML' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+
+echo ""
+echo "=== DOM-based Open Redirect ==="
+grep -ihoP 'location\.(?:href|replace|assign)\s*=\s*[^;]{0,100}(?:param|query|url|redirect|next|return|goto|target)' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+grep -ihoP '(?:window|document)\.location\s*=\s*(?:params|req|query|search|hash|href)' \
+  $JS_DIR/*.js 2>/dev/null | head -5
+```
+
+### 6.2 postMessage Vulnerabilities
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== postMessage listeners (check origin validation) ==="
+# addEventListener message without origin check
+grep -hoP "addEventListener\s*\(\s*['\"]message['\"][^)]{0,400}\)" \
+  $JS_DIR/*.js 2>/dev/null | while read match; do
+  # Check if origin is validated in same block
+  if echo "$match" | grep -qiE 'origin|source'; then
+    echo "  [VALIDATED] ${match:0:120}"
+  else
+    echo "  [NO_ORIGIN_CHECK] ${match:0:120}"
+  fi
+done
+
+echo ""
+echo "=== postMessage sends (what data is sent, to what origin) ==="
+grep -hoP '\.postMessage\s*\([^)]{5,300}\)' $JS_DIR/*.js 2>/dev/null | head -20
+
+echo ""
+echo "=== Wildcard origin (*) in postMessage ==="
+grep -hoP '\.postMessage\s*\([^,]+,\s*["\x27]\*["\x27]' $JS_DIR/*.js 2>/dev/null | head -10
+```
+
+### 6.3 Prototype Pollution
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== Prototype Pollution Gadgets ==="
+# Direct __proto__ assignment
+grep -hoP '__proto__\s*\[|__proto__\s*\.' $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+# constructor.prototype access
+grep -hoP 'constructor\s*\.\s*prototype\s*\[' $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+# Vulnerable merge/extend patterns
+grep -ihoP '(?:merge|extend|assign|deepMerge|deepAssign|defaults|mixin)\s*\([^)]{10,200}\)' \
+  $JS_DIR/*.js 2>/dev/null | head -20
+# Object spread with user-controlled input
+grep -hoP '\{\s*\.\.\.\s*(?:req|body|params|query|data|input|payload)[^}]{0,50}\}' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+
+echo ""
+echo "=== Unsafe JSON.parse usage ==="
+# JSON.parse from URL / user input
+grep -hoP 'JSON\.parse\s*\([^)]{0,100}(?:location|search|hash|param|query|req|input|data)\.' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+```
+
+### 6.4 JSONP & SSRF Patterns
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== JSONP Callbacks ==="
+grep -ihoP '(?:callback|jsonp|cb)\s*[=:]\s*["\x27][^"\x27]+["\x27]|[?&]callback=' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+# Dynamic script tag injection (JSONP pattern)
+grep -hoP 'createElement\s*\(\s*["\x27]script["\x27]\s*\)' $JS_DIR/*.js 2>/dev/null | head -5
+
+echo ""
+echo "=== SSRF Patterns (URL from user passed to server) ==="
+# fetch/axios with user-controlled URL
+grep -hoP '(?:fetch|axios\.(?:get|post)|http\.get)\s*\([^)]{0,200}(?:req\.|body\.|params\.|query\.|input\.)' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+# URL constructed from params
+grep -hoP '(?:url|endpoint|target)\s*=\s*(?:req\.|body\.|params\.|query\.)[a-zA-Z_]+' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+
+echo ""
+echo "=== WebSocket origin not checked ==="
+grep -hoP 'new\s+WebSocket\s*\([^)]{0,200}(?:location|params|query|req)' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+```
+
+---
+
+## Phase 7 — Business Logic & Feature Flags
+
+Đây là category tạo ra P1/P2 bugs cao nhất trên bug bounty.
+
+### 7.1 Hardcoded Prices & Payment Logic
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== Hardcoded Prices (integer/float in payment context) ==="
+grep -ihoP '(?:price|amount|cost|fee|total|charge|rate)\s*[=:]\s*[0-9]+(?:\.[0-9]+)?' \
+  $JS_DIR/*.js 2>/dev/null | grep -v '//\s*' | sort -u | head -20
+
+echo ""
+echo "=== Discount / Coupon / Promo codes ==="
+grep -ihoP '(?:discount|coupon|promo[_-]?code|voucher|gift[_-]?card)\s*[=:]\s*["\x27][^"\x27\s]{3,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+# Also check for hardcoded percentage discounts
+grep -ihoP '(?:discount[_-]?percent|discount[_-]?rate|off)\s*[=:]\s*[0-9]+' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+
+echo ""
+echo "=== Plan / Subscription tiers (enumeration) ==="
+grep -ihoP '(?:plan|tier|subscription|level)\s*[=:]\s*["\x27](?:free|basic|pro|premium|enterprise|vip|admin|staff)["\x27]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u
+# Plan names array
+grep -hoP '(?:plans|tiers|levels)\s*[=:]\s*\[[^\]]{10,200}\]' \
+  $JS_DIR/*.js 2>/dev/null | head -5
+```
+
+### 7.2 Feature Flags & Hidden Functionality
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== Feature Flags (disabled features might still have endpoints) ==="
+# Boolean feature flags
+grep -ihoP '(?:enable|feature|flag|toggle)[A-Za-z_]*\s*[=:]\s*(?:false|0|"false")' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -20
+# Feature flag objects
+grep -hoP 'features\s*[=:]\s*\{[^}]{20,400}\}' $JS_DIR/*.js 2>/dev/null | head -5
+# LaunchDarkly / Unleash feature flags
+grep -ihoP '(?:launchDarkly|unleash|featureFlag|FeatureToggle|variation)\s*\([^)]{5,100}\)' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+
+echo ""
+echo "=== Environment-gated functionality (staging/beta only) ==="
+grep -ihoP 'if\s*\([^)]*(?:staging|beta|dev|localhost|127\.0\.0\.1|NODE_ENV\s*===?\s*["\x27](?:dev|test|staging))[^)]*\)' \
+  $JS_DIR/*.js 2>/dev/null | head -15
+# Admin/staff only UI blocks
+grep -ihoP 'if\s*\([^)]*(?:isAdmin|isSuperuser|isStaff|role\s*===?\s*["\x27]admin)[^)]*\)' \
+  $JS_DIR/*.js 2>/dev/null | head -15
+
+echo ""
+echo "=== Hidden routes / commented-out features ==="
+grep -hoP '//\s*(?:TODO|FIXME|HACK|TEMP|REMOVE|DISABLED)[^\n]{0,100}' \
+  $JS_DIR/*.js 2>/dev/null | grep -iE '(api|endpoint|route|auth|admin|token|key|pass)' | head -20
+```
+
+### 7.3 Role & Permission Enumeration
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== All roles defined in JS ==="
+# Roles array
+grep -hoP '(?:roles|permissions|scopes)\s*[=:]\s*\[[^\]]{10,300}\]' \
+  $JS_DIR/*.js 2>/dev/null | head -5
+# Role constant definitions
+grep -ihoP '(?:ROLE|PERMISSION|SCOPE)[_A-Z]*\s*[=:]\s*["\x27][^"\x27]+["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sort -u
+
+echo ""
+echo "=== Client-side role checks (bypass candidates) ==="
+grep -ihoP 'if\s*\([^)]{0,80}(?:role|permission|scope|isAdmin|canEdit|hasAccess)[^)]{0,80}\)\s*\{' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -20
+# Role stored in localStorage (trivially writable by attacker)
+grep -ihoP 'localStorage\.(?:set|get)Item\(["\x27][^"\x27]*(?:role|permission|admin|user)[^"\x27]*["\x27]' \
+  $JS_DIR/*.js 2>/dev/null | sort -u
+
+echo ""
+echo "=== Mass Assignment Risk (all model fields exposed) ==="
+# Object spread from API response → state (all fields exposed)
+grep -hoP 'setUser\s*\(\s*\{[^}]{0,200}\.\.\.\s*(?:data|response|res|user|payload)' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+# Axios response directly spread to state
+grep -hoP '(?:setState|dispatch)\s*\(\s*\{[^}]{0,100}\.\.\.\s*(?:res|data|response)\.data' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+```
+
+### 7.4 Race Condition Hints
+
+```bash
+JS_DIR=$WORKSPACE/js_files
+
+echo "=== Parallel requests (potential race conditions) ==="
+# Promise.all with same endpoint
+grep -hoP 'Promise\.all\s*\(\s*\[[^\]]{20,400}\]\s*\)' $JS_DIR/*.js 2>/dev/null | head -10
+# Concurrent axios calls
+grep -hoP 'axios\.(?:all|spread)\s*\(' $JS_DIR/*.js 2>/dev/null | head -5
+
+echo ""
+echo "=== Non-atomic operations (check-then-act) ==="
+# Balance checks before transfer
+grep -ihoP '(?:balance|credit|limit|quota)\s*[><]=?\s*[a-zA-Z0-9_]+[^;]{0,100}(?:transfer|send|pay|withdraw|deduct)' \
+  $JS_DIR/*.js 2>/dev/null | head -10
+
+echo ""
+echo "=== Retry logic with no dedup (double-spend risk) ==="
+grep -ihoP '(?:retry|retryCount|maxRetries|retryDelay)\s*[=:]\s*[0-9]+' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -10
+```
+
+---
+
+## Phase 8 — Cross-Correlation & Bug Bounty Attack Paths
+
+### 8.1 Validate Extracted Endpoints Against Alive Hosts
 
 ```bash
 W=$WORKSPACE
@@ -537,56 +914,117 @@ cat /tmp/all_js_endpoints.txt 2>/dev/null | while read ep; do
 done | head -50
 ```
 
-### 6.2 Juicy Findings Summary
+### 8.2 Juicy Findings Summary
 
 ```bash
 W=$WORKSPACE
 JS_DIR=$W/js_files
 
-echo "╔══════════════════════════════════════╗"
-echo "║   JS ANALYSIS — PRIORITY FINDINGS    ║"
-echo "╚══════════════════════════════════════╝"
+echo "╔══════════════════════════════════════════════════════╗"
+echo "║         JS ANALYSIS — PRIORITY FINDINGS              ║"
+echo "╚══════════════════════════════════════════════════════╝"
 
+# ── P1: Verified credentials ─────────────────────────────────────────────────
 echo ""
-echo "🔴 CRITICAL: Hardcoded Secrets"
-jq -r 'select(.Verified==true) | "  [" + .DetectorName + "] " + (.Raw//""[:40])' \
+echo "🔴 P1 — VERIFIED CREDENTIALS (TruffleHog)"
+jq -r 'select(.Verified==true) | "  [" + .DetectorName + "] " + (.Raw//"?"| .[0:60])' \
   $W/trufflehog_results.jsonl 2>/dev/null
-grep -hoP 'AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|gh[pousr]_[A-Za-z0-9]{36}' \
-  $JS_DIR/*.js 2>/dev/null | sed 's/^/  /'
 
 echo ""
-echo "🔴 CRITICAL: Exposed Sourcemaps"
+echo "🔴 P1 — HARDCODED JWT TOKENS"
+grep -hoP 'eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  /'
+
+echo ""
+echo "🔴 P1 — CLOUD PROVIDER KEYS"
+grep -hoP '(?:AKIA|ASIA|AROA)[0-9A-Z]{16}|AIza[0-9A-Za-z_\-]{35}|gh[pousr]_[A-Za-z0-9]{36}|SG\.[a-zA-Z0-9_\-]{22,}\.[a-zA-Z0-9_\-]{43,}|xox[baprs]-[0-9A-Za-z\-]+|(?:sk|pk)_live_[0-9a-zA-Z]{24,}' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  /'
+
+echo ""
+echo "🔴 P1 — PRIVATE KEYS & CERTIFICATES"
+grep -l 'BEGIN PRIVATE KEY\|BEGIN RSA PRIVATE KEY\|BEGIN EC PRIVATE KEY' \
+  $JS_DIR/*.js 2>/dev/null | sed 's/^/  FILE: /'
+
+echo ""
+echo "🔴 P1 — DOM XSS SINKS (innerHTML + user input)"
+grep -hoP '\.innerHTML\s*[+=]|document\.write(?:ln)?\s*\(\|eval\s*\(' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -10 | sed 's/^/  /'
+
+echo ""
+echo "🔴 P1 — postMessage WITHOUT ORIGIN CHECK"
+grep -hoP "addEventListener\s*\(\s*['\"]message['\"][^)]{0,400}\)" \
+  $JS_DIR/*.js 2>/dev/null | grep -iv 'origin' | head -5 | sed 's/^/  /'
+
+# ── P2: High severity ────────────────────────────────────────────────────────
+echo ""
+echo "🟠 P2 — EXPOSED SOURCEMAPS (unminified source)"
 grep '\.js\.map' $W/all_urls.txt 2>/dev/null | sed 's/^/  /'
 
 echo ""
-echo "🟠 HIGH: Admin & Internal Endpoints"
-grep -iE '/admin|/internal|/debug|/_/|/dev/' \
+echo "🟠 P2 — INTERNAL / STAGING / VPN ENDPOINTS"
+grep -ihoP '["\x27`]https?://(?:internal|vpn|staging|preprod|dev|beta|api-internal)[.\-][^"\x27`\s]+["\x27`]' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  /'
+
+echo ""
+echo "🟠 P2 — DEBUG FLAGS = TRUE IN PRODUCTION"
+grep -ihoP '(?:debug|isDebug|devMode|isSandbox|enableLogging|verbose)\s*[=:]\s*(?:true|1)' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  /'
+
+echo ""
+echo "🟠 P2 — ADMIN & INTERNAL API ENDPOINTS"
+grep -iE '/admin|/internal|/debug|/superuser|/staff|/console|/backoffice' \
   /tmp/all_js_endpoints.txt 2>/dev/null | sort -u | sed 's/^/  /'
 
 echo ""
-echo "🟠 HIGH: Auth Endpoints"
-grep -iE '/auth|/login|/token|/oauth|/sso' \
+echo "🟠 P2 — DISABLED FEATURES (false flags with endpoints)"
+grep -ihoP '(?:enable|feature)[A-Za-z_]*\s*[=:]\s*(?:false|0)' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | sed 's/^/  /'
+
+echo ""
+echo "🟠 P2 — CLIENT-SIDE ROLE CHECKS (bypass candidates)"
+grep -ihoP 'if\s*\([^)]{0,80}(?:isAdmin|role\s*===?|permission\s*===?)[^)]{0,80}\)' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -10 | sed 's/^/  /'
+
+# ── P3: Medium severity ──────────────────────────────────────────────────────
+echo ""
+echo "🟡 P3 — PARAMETERIZED ENDPOINTS (IDOR candidates)"
+grep -E '(\{[a-zA-Z_]+\}|/:[a-zA-Z_]+|/[0-9]{2,}(/|$))' \
   /tmp/all_js_endpoints.txt 2>/dev/null | sort -u | sed 's/^/  /'
 
 echo ""
-echo "🟡 MEDIUM: File Upload/Download"
-grep -iE '/upload|/download|/file|/export|/import' \
+echo "🟡 P3 — FILE UPLOAD / EXPORT"
+grep -iE '/upload|/download|/export|/import|/file|/attachment|/media' \
   /tmp/all_js_endpoints.txt 2>/dev/null | sort -u | sed 's/^/  /'
 
 echo ""
-echo "🟡 MEDIUM: Parameterized (IDOR)"
-grep -E '(\{[a-zA-Z_]+\}|/:[a-zA-Z_]+|/[0-9]+$)' \
-  /tmp/all_js_endpoints.txt 2>/dev/null | sort -u | sed 's/^/  /'
+echo "🟡 P3 — PROTOTYPE POLLUTION GADGETS"
+grep -hoP '__proto__\s*\[|constructor\s*\.\s*prototype\s*\[' \
+  $JS_DIR/*.js 2>/dev/null | sort -u | head -5 | sed 's/^/  /'
 
 echo ""
-echo "ℹ️  INFO: GraphQL"
-grep -iE 'graphql|/gql' /tmp/all_js_endpoints.txt 2>/dev/null | sort -u | sed 's/^/  /'
+echo "🟡 P3 — GRAPHQL ENDPOINTS & INTROSPECTION"
+grep -iE 'graphql|/gql|__schema|__type' \
+  /tmp/all_js_endpoints.txt $W/linkfinder_endpoints.txt 2>/dev/null | sort -u | sed 's/^/  /'
 
 echo ""
-echo "━━━ TOTALS ━━━"
-echo "JS files: $(ls $JS_DIR/*.js 2>/dev/null | wc -l)"
-echo "JS URLs : $(wc -l < $W/js_urls.txt 2>/dev/null || echo 0)"
-echo "Endpoints: $(wc -l < /tmp/all_js_endpoints.txt 2>/dev/null || echo 0)"
+echo "🟡 P3 — HARDCODED DISCOUNT / PROMO CODES"
+grep -ihoP '(?:discount|coupon|promo[_-]?code|voucher)\s*[=:]\s*["\x27][^"\x27\s]{3,}["\x27]' \
+  $JS_DIR/*.js 2>/dev/null -i | sort -u | sed 's/^/  /'
+
+echo ""
+echo "🟡 P3 — RACE CONDITION HINTS (Promise.all / parallel requests)"
+grep -hoP 'Promise\.all\s*\(\s*\[' $JS_DIR/*.js 2>/dev/null | wc -l \
+  | xargs printf "  Promise.all calls: %s\n"
+
+# ── Summary stats ─────────────────────────────────────────────────────────────
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+printf "  JS files downloaded : %s\n" "$(ls $JS_DIR/*.js 2>/dev/null | wc -l)"
+printf "  JS URLs collected   : %s\n" "$(wc -l < $W/js_urls.txt 2>/dev/null || echo 0)"
+printf "  Endpoints extracted : %s\n" "$(wc -l < /tmp/all_js_endpoints.txt 2>/dev/null || echo 0)"
+printf "  TruffleHog verified : %s\n" "$(jq -r 'select(.Verified==true)' $W/trufflehog_results.jsonl 2>/dev/null | grep -c DetectorName || echo 0)"
+printf "  Gitleaks hits       : %s\n" "$(jq 'length' $W/gitleaks_results.json 2>/dev/null || echo 0)"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 ```
 
 ---
@@ -607,16 +1045,40 @@ echo "Endpoints: $(wc -l < /tmp/all_js_endpoints.txt 2>/dev/null || echo 0)"
 | `all_endpoints.txt` | Merged endpoints from all sources | `cat`, classify |
 | `all_urls.txt` | All URLs including JS paths | `grep '.js'` |
 
-## Authentication Assessment Checklist
+## Security Assessment Checklist
 
-Khi phân tích auth từ JS, xác định:
-
+### Authentication & Secrets
 - [ ] **Storage**: localStorage (XSS risk) vs httpOnly cookie (safer)
 - [ ] **Type**: JWT vs opaque token vs session cookie vs API key
 - [ ] **Injection point**: Authorization header / X-API-Key / Cookie
 - [ ] **Refresh mechanism**: exists? what's the TTL?
-- [ ] **Client-side validation**: role checks bypass-able từ JS?
-- [ ] **Hardcoded secrets**: JWT secret / client_secret / API keys
+- [ ] **Hardcoded secrets**: JWT tokens / API keys / cloud credentials / private keys
 - [ ] **OAuth config**: client_id, redirect_uri, scope — exposed?
 - [ ] **CORS policy**: `Access-Control-Allow-Origin: *` ?
 - [ ] **Sourcemaps exposed**: unminified source = full auth logic visible
+
+### Authorization & Access Control
+- [ ] **Client-side role checks**: `if (isAdmin)` in JS → trivially bypassed
+- [ ] **Role stored in localStorage**: writable by JS → privilege escalation
+- [ ] **IDOR candidates**: endpoints with `/users/{id}`, `/orders/{id}` etc.
+- [ ] **Mass assignment**: object spread `{...req.body}` sent to API
+- [ ] **Disabled features**: `enabled: false` flags with live endpoints behind them
+- [ ] **Admin-only UI**: hidden routes/components still rendering when auth bypassed
+
+### Client-Side Vulnerabilities
+- [ ] **DOM XSS sinks**: `innerHTML`, `document.write`, `eval()`, `insertAdjacentHTML`
+- [ ] **Source → sink flows**: `location.search/hash` → dangerous sink without sanitization
+- [ ] **postMessage origin validation**: listeners with no `event.origin` check
+- [ ] **Wildcard postMessage**: `.postMessage(data, '*')` leaks to any origin
+- [ ] **Prototype pollution**: `__proto__[x]`, `constructor.prototype[x]`, unsafe `merge()`
+- [ ] **JSONP callbacks**: user-controlled callback names
+- [ ] **SSRF gadgets**: fetch/axios with user-controlled URL parameter
+
+### Business Logic
+- [ ] **Hardcoded prices/amounts**: static pricing that should be server-validated
+- [ ] **Discount/coupon codes**: hardcoded promo codes in JS bundles
+- [ ] **Race conditions**: `Promise.all` on non-atomic check-then-act operations
+- [ ] **Feature flags bypassed**: disabled flags still have working API endpoints
+- [ ] **TODO/FIXME comments**: with auth/security keywords → known weak spots
+- [ ] **Debug endpoints**: `debug=true`, `isDebug`, `devMode` in production build
+- [ ] **Internal/staging endpoints**: URLs with internal/vpn/staging/preprod domains
