@@ -759,6 +759,7 @@ def _execute_fanout(step: dict[str, Any], state: _RunState) -> str:
 
     # Resolve all sub-tasks, skipping any that are already done
     tasks: list[dict[str, Any]] = []
+    completed_count = 0
     for child in step['fanout']:
         child_id = child['id']
         composite_id = f'{step_id}.{child_id}'
@@ -786,7 +787,8 @@ def _execute_fanout(step: dict[str, Any], state: _RunState) -> str:
             cond = _check_requires(child['requires'], ctx, quiet=True) if child['requires'] else _check_outputs(child_outputs, ctx)
             if cond:
                 warn(f'Skipping {composite_id} (already completed)')
-                state.set_status(composite_id, 'skipped')
+                state.set_status(composite_id, 'ok')
+                completed_count += 1
                 if state.resume:
                     _record_resume(state, composite_id, 'ok', child_outputs, skipped=True)
                 continue
@@ -812,11 +814,12 @@ def _execute_fanout(step: dict[str, Any], state: _RunState) -> str:
         })
 
     if not tasks:
-        state.set_status(step_id, 'skipped')
+        parent_status = 'ok' if completed_count > 0 else 'skipped'
+        state.set_status(step_id, parent_status)
         _step_event('SKIP', step_id)
         if state.resume:
             _record_resume(state, step_id, 'ok', {}, skipped=True)
-        return 'skipped'
+        return parent_status
 
     if state.resume:
         for task in tasks:
@@ -922,10 +925,10 @@ def _execute_step(step: dict[str, Any], state: _RunState) -> str:
             warn(f"Skipping '{step_id}' (already completed)")
             state.set_outputs(step_id, outputs)
             _step_event('SKIP', step_id)
-            state.set_status(step_id, 'skipped')
+            state.set_status(step_id, 'ok')
             if state.resume:
                 _record_resume(state, step_id, 'ok', outputs, skipped=True)
-            return 'skipped'
+            return 'ok'
 
     if state.print_plan:
         print(f'{step_id}: {command}')
