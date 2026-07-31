@@ -22,6 +22,10 @@ const NAV = [
   { to: '/tools',      label: '⚙ Tools' },
 ]
 
+const NAV_EXTERNAL = [
+  { href: 'http://127.0.0.1:4040/', label: '✦ OpenCode' },
+]
+
 export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#0d1117]">
@@ -48,6 +52,19 @@ export default function App() {
               {label}
             </NavLink>
           ))}
+          <div className="pt-2 mt-2 border-t border-[#30363d]">
+            {NAV_EXTERNAL.map(({ href, label }) => (
+              <a
+                key={href}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block px-3 py-2 rounded text-xs transition-colors text-[#8b949e] hover:text-[#e6edf3] hover:bg-[#161b22]"
+              >
+                {label}
+              </a>
+            ))}
+          </div>
         </nav>
         <div className="px-4 py-3 border-t border-[#30363d]">
           <p className="text-[10px] text-[#8b949e]">v3.1.0</p>

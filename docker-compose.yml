@@ -15,15 +15,19 @@ services:
     image: k1nzr3c0n:latest
     ports:
       - "${HOST:-127.0.0.1}:${PORT:-8000}:8000"
+      - "127.0.0.1:4040:4040"
     volumes:
       - ./runs:/app/runs
       - ./workflows:/app/workflows
+      - ./src:/app/src                          # live source — edits in opencode persist to host
+      - ./frontend:/app/frontend
       - ./.qwen/skills:/root/.qwen/skills:ro
       # Uncomment to use host wordlists:
       # - ${WORDLISTS_DIR:-./wordlists}:/app/wordlists:ro
     environment:
       - K1NZR3C0N_BASE=/app
       - REDIS_URL=redis://redis:6379/0
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
     depends_on:
       redis:
         condition: service_healthy

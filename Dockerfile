@@ -506,6 +506,20 @@ RUN nuclei -update-templates \
 RUN curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh | bash \
     || echo "[warn] Qwen Code install failed"
 
+# ── OpenCode ─────────────────────────────────────────────────────────────────
+RUN curl -fsSL https://opencode.ai/install | bash \
+    || echo "[warn] OpenCode install failed"
+# run.sh wrapper — OPENROUTER_API_KEY is injected at runtime via docker-compose env
+RUN printf '#!/bin/bash\nexec /root/.opencode/bin/opencode "$@"\n' \
+    > /root/.opencode/run.sh && chmod +x /root/.opencode/run.sh || true
+
+# ── Node.js 22 + Claude Code ──────────────────────────────────────────────────
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g @anthropic-ai/claude-code \
+    || echo "[warn] Claude Code install failed"
+
 ENV PATH=/root/.local/bin:$PATH
 
 # ── App ───────────────────────────────────────────────────────────────────────

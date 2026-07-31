@@ -12,13 +12,17 @@ from fastapi.staticfiles import StaticFiles
 
 from ..config import REDIS_URL, STATIC_DIR
 from ..db import RunLog, init_db
-from .routes import files, findings, keys, reports, runs, terminal, tools, upload, workflows
+from .routes import files, findings, keys, opencode, reports, runs, terminal, tools, upload, workflows
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    opencode.start_opencode()
+    try:
+        yield
+    finally:
+        opencode.stop_opencode()
 
 
 app = FastAPI(title="k1nzr3c0n API", version="3.1.0", lifespan=lifespan)
@@ -45,6 +49,10 @@ app.include_router(terminal.router,  prefix="/ws")
 app.include_router(runs.router,      prefix="/api", include_in_schema=False)
 app.include_router(workflows.router, prefix="/api", include_in_schema=False)
 app.include_router(files.router,     prefix="/api", include_in_schema=False)
+
+# opencode proxy — must come AFTER specific /api/... routes so the catch-all
+# /api/{path:path} only fires for paths k1nzr3c0n doesn't own.
+app.include_router(opencode.router)
 
 
 # ── WebSocket: live log streaming ──────────────────────────────────────────────
