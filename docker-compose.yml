@@ -65,7 +65,8 @@ services:
     image: k1nzr3c0n:latest
     command: celery -A k1nzr3c0n.tasks beat --loglevel=info --scheduler celery.beat:PersistentScheduler --schedule /var/lib/celerybeat/schedule
     volumes:
-      - ./runs:/app/runs              # required: beat reads DB to dispatch schedules
+      - ./runs:/app/runs
+      - ./reports:/app/reports              # required: beat reads DB to dispatch schedules
       - ./workflows:/app/workflows
       - beat_data:/var/lib/celerybeat
     environment:
