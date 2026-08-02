@@ -531,6 +531,10 @@ RUN pip3 install -r requirements.txt croniter --break-system-packages
 COPY src/ ./src/
 RUN pip3 install -e . --no-deps --break-system-packages
 
+# pip installs Python httpx (transitive dep) which overwrites the projectdiscovery
+# httpx Go binary at /usr/local/bin/httpx — restore it after all pip steps.
+COPY --from=gobuilder /root/go/bin/httpx /usr/local/bin/httpx
+
 COPY workflows/ ./workflows/
 COPY scripts/ ./scripts/
 
