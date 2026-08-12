@@ -40,7 +40,7 @@ PROVIDERS: list[dict] = [
     {"id": "virustotal",      "name": "VirusTotal",        "category": "Subdomain Intel",   "url": "virustotal.com",              "hint": "API key — auto-injected as $VIRUSTOTAL_KEY env var",    "subfinder": True,  "env_var": "VIRUSTOTAL_KEY"},
     {"id": "bevigil",         "name": "BeVigil",           "category": "Subdomain Intel",   "url": "bevigil.com",                 "hint": "API key — auto-injected as $BEVIGIL_KEY env var",       "subfinder": True,  "env_var": "BEVIGIL_KEY"},
     {"id": "c99",             "name": "C99",               "category": "Subdomain Intel",   "url": "subdomainfinder.c99.nl",      "hint": "API key",                                               "subfinder": True,  "env_var": "C99_API_KEY"},
-    {"id": "intelx",          "name": "IntelX",            "category": "Subdomain Intel",   "url": "intelx.io",                   "hint": "API key",                                               "subfinder": True,  "env_var": "INTELX_API_KEY"},
+    {"id": "intelx",          "name": "IntelX",            "category": "Subdomain Intel",   "url": "intelx.io",                   "hint": "API key only (UUID) — host suffix :2.intelx.io auto-appended for subfinder", "subfinder": True,  "env_var": "INTELX_API_KEY"},
     {"id": "hackertarget",    "name": "HackerTarget",      "category": "Subdomain Intel",   "url": "hackertarget.com",            "hint": "API key",                                               "subfinder": True,  "env_var": "HACKERTARGET_API_KEY"},
     {"id": "dnsdumpster",     "name": "DNSDumpster",       "category": "Subdomain Intel",   "url": "dnsdumpster.com",             "hint": "API key",                                               "subfinder": True,  "env_var": "DNSDUMPSTER_API_KEY"},
     {"id": "whoisxmlapi",     "name": "WhoisXML",          "category": "Subdomain Intel",   "url": "whoisxmlapi.com",             "hint": "API key",                                               "subfinder": True,  "env_var": "WHOISXMLAPI_API_KEY"},
@@ -64,6 +64,13 @@ _SUBFINDER_KEY_MAP: dict[str, str] = {
     "zoomeye": "zoomeyeapi",  # subfinder v2.14+ uses "zoomeyeapi"
 }
 
+# Value transforms: some subfinder sources require a composite value format.
+_SUBFINDER_VALUE_TRANSFORM: dict[str, Any] = {
+    # IntelX requires "api_key:api_host" — without the host subfinder silently
+    # skips the source even when the key is present in provider-config.yaml.
+    "intelx": lambda v: f"{v}:2.intelx.io" if ":" not in v else v,
+}
+
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
@@ -78,12 +85,17 @@ def build_subfinder_config(key_map: dict[str, str]) -> str:
 
     Applies _SUBFINDER_KEY_MAP renaming so provider IDs that differ in subfinder
     (e.g., 'zoomeye' → 'zoomeyeapi') are written with the correct key.
+    Applies _SUBFINDER_VALUE_TRANSFORM for providers that need composite values
+    (e.g., intelx → 'key:2.intelx.io').
     """
     cfg: dict[str, list[str]] = {}
     for provider, value in key_map.items():
         if provider in _SUBFINDER_IDS and value and value.strip():
             sf_key = _SUBFINDER_KEY_MAP.get(provider, provider)
-            cfg[sf_key] = [value.strip()]
+            raw = value.strip()
+            transform = _SUBFINDER_VALUE_TRANSFORM.get(provider)
+            sf_value = transform(raw) if transform else raw  # type: ignore[operator]
+            cfg[sf_key] = [sf_value]
     return yaml.dump(cfg, default_flow_style=False, allow_unicode=True)
 
 

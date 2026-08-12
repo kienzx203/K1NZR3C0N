@@ -113,6 +113,16 @@ _SUBFINDER_KEY_MAP: dict[str, str] = {
     "zoomeye": "zoomeyeapi",  # subfinder v2.14+ uses "zoomeyeapi" not "zoomeye"
 }
 
+# Some subfinder sources require a composite value format different from how
+# we store the raw key in the DB.  Each entry is a callable that transforms
+# the stored value → the string to write into provider-config.yaml.
+_SUBFINDER_VALUE_TRANSFORM: dict[str, object] = {
+    # IntelX subfinder v2.14 format is "host:api_key" in provider-config.yaml.
+    # Subfinder constructs: POST https://{host}/phonebook/search?k={key}
+    # So the config value must be "2.intelx.io:api_key" (host first, key second).
+    "intelx": lambda v: f"2.intelx.io:{v}" if ":" not in v else v,
+}
+
 # Providers that are NOT valid subfinder sources — skip when writing subfinder config.
 # (These may be valid for uncover, direct API calls, or other tools.)
 _SUBFINDER_SKIP: frozenset[str] = frozenset({
@@ -149,6 +159,8 @@ def _write_subfinder_config(key_map: dict[str, str]) -> None:
 
     Uses _SUBFINDER_KEY_MAP to rename provider IDs where subfinder's key name
     differs from our internal ID (e.g., zoomeye → zoomeyeapi).
+    Uses _SUBFINDER_VALUE_TRANSFORM to reformat values where subfinder expects
+    a different format from how we store the key (e.g., intelx → key:host).
     Providers in _SUBFINDER_SKIP are excluded (they are uncover-only or other tools).
     """
     try:
@@ -159,7 +171,10 @@ def _write_subfinder_config(key_map: dict[str, str]) -> None:
                 continue  # not a valid subfinder source — skip
             if v and v.strip():
                 sf_key = _SUBFINDER_KEY_MAP.get(p, p)
-                cfg[sf_key] = [v.strip()]
+                raw = v.strip()
+                transform = _SUBFINDER_VALUE_TRANSFORM.get(p)
+                sf_value = transform(raw) if transform else raw  # type: ignore[operator]
+                cfg[sf_key] = [sf_value]
         config_dir = Path.home() / ".config" / "subfinder"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "provider-config.yaml").write_text(

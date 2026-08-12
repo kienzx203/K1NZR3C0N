@@ -43,18 +43,35 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Tor proxy — routes waybackurls/gau through Tor to bypass archive.org block ─
+  # Worker reads TOR_PROXY env var; only wayback-dependent workflow steps use it.
+  # API calls (shodan, netlas, securitytrails…) are NOT routed through Tor.
+  tor:
+    image: dperson/torproxy:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --socks5 localhost:9050 https://check.torproject.org/api/ip | grep -q '\"IsTor\":true'"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+
   worker:
     image: k1nzr3c0n:latest
     command: celery -A k1nzr3c0n.tasks worker --loglevel=info --concurrency=4
     volumes:
       - ./runs:/app/runs
       - ./workflows:/app/workflows
+      - ./src:/app/src                          # live source — tasks.py edits on host take effect immediately
+      - ./scripts:/app/scripts:ro
       - ./.qwen/skills:/root/.qwen/skills:ro
       - nuclei_data:/root/nuclei-templates
       # - ${WORDLISTS_DIR:-./wordlists}:/app/wordlists:ro
     environment:
       - K1NZR3C0N_BASE=/app
       - REDIS_URL=redis://redis:6379/0
+      # ── Tor proxy — only wayback steps use this; API keys are NOT routed through Tor
+      - TOR_PROXY=socks5h://tor:9050
       # - K1NZR3C0N_WEBHOOK_URL=https://hooks.slack.com/services/...
       # ── Security API keys — all workflow steps run in this container ──────────
       # Set values in .env — worker picks them up automatically on restart.
@@ -71,6 +88,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      tor:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "celery -A k1nzr3c0n.tasks inspect ping -d celery@$$HOSTNAME --timeout 5 2>/dev/null | grep -q OK"]

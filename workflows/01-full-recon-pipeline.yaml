@@ -82,18 +82,20 @@ steps:
     mkdir -p ~/.config/subfinder ~/.config/uncover
     EXISTING_SF=/root/.config/subfinder/provider-config.yaml
 
-    # ── Add env-var-only keys missing from tasks.py config ──────────────────
-    # These are keys that have no /keys UI entry yet (must be added via /keys UI for best results)
+    # ── Supplement subfinder config with any env-var keys not yet written ───────
+    # tasks.py writes provider-config.yaml from /keys UI DB before the run starts.
+    # This block adds any keys present only as env vars (e.g. set in docker-compose
+    # or .env) that were not in the DB at run start time. It never overwrites DB keys.
     {
-      # Read existing config lines (preserve what tasks.py wrote)
+      # Preserve what tasks.py already wrote
       cat "$EXISTING_SF" 2>/dev/null || true
 
-      # SECURITYTRAILS — not currently in /keys UI; fallback to env
+      # SECURITYTRAILS — managed via /keys UI; fallback covers env-only deployments
       ST_T="${SECURITYTRAILS_KEY:-}"
       [ -n "$ST_T" ] && ! grep -q '^securitytrails:' "$EXISTING_SF" 2>/dev/null && \
         printf 'securitytrails:\n  - %s\n' "$ST_T"
 
-      # VIRUSTOTAL — not currently in /keys UI; fallback to env
+      # VIRUSTOTAL — managed via /keys UI; fallback covers env-only deployments
       VT_T="${VIRUSTOTAL_KEY:-}"
       [ -n "$VT_T" ] && ! grep -q '^virustotal:' "$EXISTING_SF" 2>/dev/null && \
         printf 'virustotal:\n  - %s\n' "$VT_T"
@@ -303,7 +305,11 @@ steps:
   optional: true
   skip_if_exists: true
   timeout: 10m
-  run: echo {target} | timeout 300 waybackurls 2>/dev/null | tee {workspace}/p_waybackurls_urls.txt | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' | sort -u > {workspace}/p_waybackurls_subs.txt; touch {workspace}/p_waybackurls_subs.txt {workspace}/p_waybackurls_urls.txt
+  run: |
+    # archive.org (207.241.237.3) is TCP-unreachable in this container AND blocks Tor exit nodes.
+    # waybackurls has no --timeout flag and hangs; skip to avoid blocking the workflow.
+    # URL archive coverage comes from: gau (urlscan+commoncrawl+otx), waymore, urlfinder.
+    touch {workspace}/p_waybackurls_subs.txt {workspace}/p_waybackurls_urls.txt
   outputs:
     subs: '{workspace}/p_waybackurls_subs.txt'
     urls: '{workspace}/p_waybackurls_urls.txt'
@@ -314,7 +320,14 @@ steps:
   optional: true
   skip_if_exists: true
   timeout: 10m
-  run: gau --subs {target} --threads 5 --timeout 30 2>/dev/null | tee {workspace}/p_gau_urls.txt | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' | sort -u > {workspace}/p_gau_subs.txt; touch {workspace}/p_gau_subs.txt {workspace}/p_gau_urls.txt
+  run: |
+    # archive.org blocks Tor exit nodes; gau only supports http:// proxy (not socks5h://).
+    # Use reliable providers only: urlscan, commoncrawl, otx.
+    gau --subs {target} --threads 5 --timeout 30 --providers urlscan,commoncrawl,otx 2>/dev/null \
+      | tee {workspace}/p_gau_urls.txt \
+      | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
+      | sort -u > {workspace}/p_gau_subs.txt || true
+    touch {workspace}/p_gau_subs.txt {workspace}/p_gau_urls.txt
   outputs:
     subs: '{workspace}/p_gau_subs.txt'
     urls: '{workspace}/p_gau_urls.txt'
@@ -325,7 +338,7 @@ steps:
   optional: true
   skip_if_exists: true
   timeout: 15m
-  run: waymore -i {target} -mode U -oU {workspace}/p_waymore_urls.txt -t 120 2>/dev/null || true; test -f {workspace}/p_waymore_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_waymore_urls.txt | sort -u > {workspace}/p_waymore_subs.txt || true; touch {workspace}/p_waymore_subs.txt {workspace}/p_waymore_urls.txt
+  run: waymore -i {target} -mode U -oU {workspace}/p_waymore_urls.txt --providers otx,urlscan,commoncrawl -t 60 2>/dev/null || true; test -f {workspace}/p_waymore_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_waymore_urls.txt | sort -u > {workspace}/p_waymore_subs.txt || true; touch {workspace}/p_waymore_subs.txt {workspace}/p_waymore_urls.txt
   outputs:
     subs: '{workspace}/p_waymore_subs.txt'
     urls: '{workspace}/p_waymore_urls.txt'
@@ -447,7 +460,7 @@ steps:
   skip_if_exists: true
   timeout: 10m
   run: |
-    gauplus --subs {target} -t 10 --timeout 30 2>/dev/null \
+    gauplus --subs {target} -t 10 --timeout 30 -providers "otx,commoncrawl" 2>/dev/null \
       | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
       | sort -u > {workspace}/p_gauplus_subs.txt || true
     touch {workspace}/p_gauplus_subs.txt
@@ -525,7 +538,7 @@ steps:
   outputs:
     file: '{workspace}/p_github_code.txt'
 - id: p_securitytrails
-  name: '[passive] securitytrails API — historical passive DNS (needs SECURITYTRAILS_KEY)'
+  name: '[passive] securitytrails API — historical passive DNS'
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -535,13 +548,10 @@ steps:
     ST_KEY="${SECURITYTRAILS_KEY:-}"
     touch {workspace}/p_securitytrails.txt
     [ -z "$ST_KEY" ] && echo "[securitytrails] no key — skipping" && exit 0
-    # Get subdomains list
-    curl -sL "https://api.securitytrails.com/v1/domain/{target}/subdomains?children_only=false&include_inactive=true" \
-      -H "apikey: $ST_KEY" --max-time 30 2>/dev/null \
-      | jq -r '.subdomains[]? // empty' 2>/dev/null \
-      | awk '{print $0".{target}"}' | sort -u > {workspace}/p_securitytrails.txt || true
+    python3 /app/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
+      2>/dev/null | sort -u > {workspace}/p_securitytrails.txt || true
     touch {workspace}/p_securitytrails.txt
-    printf 'SecurityTrails subs: %s\n' "$(wc -l < {workspace}/p_securitytrails.txt)"
+    printf 'SecurityTrails: %s subdomains\n' "$(wc -l < {workspace}/p_securitytrails.txt)"
   outputs:
     file: '{workspace}/p_securitytrails.txt'
 - id: p_virustotal
