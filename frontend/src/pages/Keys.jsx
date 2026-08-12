@@ -1,40 +1,42 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { api } from '../api.js'
 
-const CATEGORY_ORDER = ['Internet Scanner', 'Subdomain Intel', 'Archive / Cert', 'Search & Dork']
+const CATEGORY_ORDER = [
+  'Internet Scanner',
+  'Subdomain Intel',
+  'Archive / Cert',
+  'Search & Dork',
+  'AI Assistant',
+]
 
-// Keys that map directly to a workflow var (auto-injected at run time by tasks.py)
-const KEY_VAR_MAP = {
-  chaos:      { var: 'chaos_key',     workflows: ['k1nzr3con.yaml', '01-full-recon-pipeline.yaml'] },
-}
-
-const SUBFINDER_TOTAL = 21  // total providers supported
-
-// Per-template key dependency map — drives the Template Sync panel
+// Workflows that receive full key injection at run time via _build_key_env()
+// keysInjected: true  → workflow has explicit key-guarded steps (chaos/securitytrails/shodan/etc.)
+// keysInjected: false → no explicit key steps, but env vars ARE still injected by tasks.py
 const TEMPLATE_DEPS = [
   {
     name: 'k1nzr3con.yaml',
-    subfinder: true,
-    autoVars: ['chaos_key'],   // vars auto-injected at run time
+    keysInjected: true,
     note: null,
   },
   {
     name: '01-full-recon-pipeline.yaml',
-    subfinder: true,
-    autoVars: ['chaos_key'],
+    keysInjected: true,
+    note: null,
+  },
+  {
+    name: 'workflow-all.yaml',
+    keysInjected: true,
     note: null,
   },
   {
     name: '02-js-secrets-recon.yaml',
-    subfinder: false,
-    autoVars: [],
-    note: 'no key integration — runs standalone',
+    keysInjected: false,
+    note: 'env vars injected — no key-specific steps (gau/waymore pick up URLSCAN_API_KEY automatically)',
   },
   {
     name: '03-param-discovery.yaml',
-    subfinder: false,
-    autoVars: [],
-    note: 'session/token → use Auth section when creating run',
+    keysInjected: false,
+    note: 'env vars injected — use Auth section for session/token headers when creating run',
   },
 ]
 
@@ -43,8 +45,13 @@ export default function Keys() {
   const [editing, setEditing] = useState({})
   const [saving, setSaving]   = useState({})
   const [error, setError]     = useState(null)
-  // provider → configured (derived from keys)
+
+  const configured    = keys.filter(k => k.configured).length
   const configuredSet = new Set(keys.filter(k => k.configured).map(k => k.provider))
+
+  // Counts per category (for Template Sync badge)
+  const subfinder_configured = keys.filter(k => k.configured && k.meta?.subfinder !== false).length
+  const subfinder_total      = keys.filter(k => k.meta?.subfinder !== false).length
 
   const load = useCallback(() => {
     api.getKeys().then(setKeys).catch(e => setError(e.message))
@@ -79,8 +86,6 @@ export default function Keys() {
     return acc
   }, {})
 
-  const configured = keys.filter(k => k.configured).length
-
   return (
     <div className="p-6 max-w-4xl">
 
@@ -89,8 +94,8 @@ export default function Keys() {
         <div>
           <h1 className="text-[#e6edf3] text-xl font-semibold">Intelligence API Keys</h1>
           <p className="text-[#8b949e] text-sm mt-1">
-            Keys are auto-injected into <strong className="text-[#e6edf3]">subfinder</strong> and
-            {' '}<strong className="text-[#e6edf3]">workflow vars</strong> at run time — no manual copy-paste needed.
+            Keys saved here are auto-injected as <strong className="text-[#e6edf3]">$ENV_VARs</strong> and into{' '}
+            <strong className="text-[#e6edf3]">subfinder</strong> on every workflow run — no manual copy-paste needed.
           </p>
         </div>
         <div className="text-right flex-shrink-0 ml-4">
@@ -102,7 +107,7 @@ export default function Keys() {
         </div>
       </div>
 
-      {/* Template Sync — template-centric view */}
+      {/* Template Sync panel */}
       <div style={{ marginBottom: 20, borderRadius: 8, border: '1px solid #21262d', overflow: 'hidden' }}>
         <div style={{
           padding: '7px 12px', background: '#0d1117',
@@ -110,17 +115,11 @@ export default function Keys() {
           textTransform: 'uppercase', letterSpacing: '0.08em',
           borderBottom: '1px solid #21262d',
         }}>
-          Template Sync
+          Workflow Key Sync — all configured keys auto-injected at run time
         </div>
         {TEMPLATE_DEPS.map((tmpl, i) => {
-          const isLast = i === TEMPLATE_DEPS.length - 1
-          // Which auto-vars are active for this template
-          const autoVarStatus = tmpl.autoVars.map(varName => {
-            const entry = Object.entries(KEY_VAR_MAP).find(([, info]) => info.var === varName)
-            const provider = entry?.[0]
-            return { varName, active: provider ? configuredSet.has(provider) : false }
-          })
-          const hasAnyKey = tmpl.subfinder ? configured > 0 : autoVarStatus.some(v => v.active)
+          const isLast   = i === TEMPLATE_DEPS.length - 1
+          const active   = tmpl.keysInjected && configured > 0
 
           return (
             <div key={tmpl.name} style={{
@@ -131,7 +130,7 @@ export default function Keys() {
               {/* Status dot */}
               <span style={{
                 width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                background: hasAnyKey ? '#3fb950' : '#30363d',
+                background: active ? '#3fb950' : '#30363d',
               }} />
 
               {/* Template name */}
@@ -142,33 +141,32 @@ export default function Keys() {
                 {tmpl.name}
               </span>
 
-              {/* Key integration detail */}
+              {/* Integration detail */}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
-                {tmpl.subfinder ? (
+                {tmpl.keysInjected ? (
                   <>
+                    {/* Env vars badge */}
                     <span style={{
                       fontSize: 9, padding: '1px 7px', borderRadius: 3,
                       background: configured > 0 ? '#0a1f0e' : '#0d1117',
                       border: `1px solid ${configured > 0 ? '#3fb95044' : '#21262d'}`,
                       color: configured > 0 ? '#3fb950' : '#484f58',
                     }}>
-                      ⚙ subfinder {configured}/{SUBFINDER_TOTAL}
+                      ⚡ {configured} $ENV_VAR{configured !== 1 ? 's' : ''} injected
                     </span>
-                    {autoVarStatus.map(({ varName, active }) => (
-                      <span key={varName} style={{
-                        fontSize: 9, padding: '1px 7px', borderRadius: 3,
-                        fontFamily: 'monospace',
-                        background: active ? '#0a192966' : '#0d1117',
-                        border: `1px solid ${active ? '#58a6ff44' : '#21262d'}`,
-                        color: active ? '#58a6ff' : '#484f58',
-                      }}>
-                        🔑 {varName} {active ? '✓' : '—'}
-                      </span>
-                    ))}
+                    {/* Subfinder badge */}
+                    <span style={{
+                      fontSize: 9, padding: '1px 7px', borderRadius: 3,
+                      background: subfinder_configured > 0 ? '#0a192966' : '#0d1117',
+                      border: `1px solid ${subfinder_configured > 0 ? '#58a6ff44' : '#21262d'}`,
+                      color: subfinder_configured > 0 ? '#58a6ff' : '#484f58',
+                    }}>
+                      ⚙ subfinder {subfinder_configured}/{subfinder_total}
+                    </span>
                   </>
                 ) : (
                   <span style={{ fontSize: 9, color: '#484f58' }}>
-                    ○ no key integration{tmpl.note ? ` — ${tmpl.note}` : ''}
+                    ○ {tmpl.note}
                   </span>
                 )}
               </div>
@@ -184,29 +182,32 @@ export default function Keys() {
         </div>
       )}
 
-      {CATEGORY_ORDER.map(cat => (
-        <section key={cat} className="mb-7">
-          <h2 className="text-[#8b949e] text-[10px] font-semibold uppercase tracking-widest mb-3 pb-2 border-b border-[#21262d]">
-            {cat}
-          </h2>
-          <div className="space-y-1.5">
-            {(byCategory[cat] || []).map(k => (
-              <ProviderRow
-                key={k.provider}
-                k={k}
-                keyVarInfo={KEY_VAR_MAP[k.provider] || null}
-                editValue={editing[k.provider]}
-                saving={!!saving[k.provider]}
-                onEdit={() => startEdit(k.provider)}
-                onCancel={() => cancelEdit(k.provider)}
-                onChange={v => setEditing(prev => ({ ...prev, [k.provider]: v }))}
-                onSave={() => save(k.provider)}
-                onDelete={() => del(k.provider)}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      {CATEGORY_ORDER.map(cat => {
+        const rows = byCategory[cat] || []
+        if (rows.length === 0) return null
+        return (
+          <section key={cat} className="mb-7">
+            <h2 className="text-[#8b949e] text-[10px] font-semibold uppercase tracking-widest mb-3 pb-2 border-b border-[#21262d]">
+              {cat}
+            </h2>
+            <div className="space-y-1.5">
+              {rows.map(k => (
+                <ProviderRow
+                  key={k.provider}
+                  k={k}
+                  editValue={editing[k.provider]}
+                  saving={!!saving[k.provider]}
+                  onEdit={() => startEdit(k.provider)}
+                  onCancel={() => cancelEdit(k.provider)}
+                  onChange={v => setEditing(prev => ({ ...prev, [k.provider]: v }))}
+                  onSave={() => save(k.provider)}
+                  onDelete={() => del(k.provider)}
+                />
+              ))}
+            </div>
+          </section>
+        )
+      })}
 
       {keys.length === 0 && (
         <div className="text-center py-16 text-[#6e7681] text-sm">Loading providers…</div>
@@ -215,8 +216,9 @@ export default function Keys() {
   )
 }
 
-function ProviderRow({ k, keyVarInfo, editValue, saving, onEdit, onCancel, onChange, onSave, onDelete }) {
+function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave, onDelete }) {
   const isEditing = editValue !== undefined
+  const envVar    = k.meta?.env_var   // e.g. "SHODAN_API_KEY"
 
   return (
     <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
@@ -235,7 +237,7 @@ function ProviderRow({ k, keyVarInfo, editValue, saving, onEdit, onCancel, onCha
           <span className="text-[#e6edf3] text-sm font-medium">{k.meta?.name || k.provider}</span>
           <span className="text-[#484f58] text-xs">{k.meta?.url}</span>
 
-          {/* Subfinder badge — only for subfinder providers */}
+          {/* Subfinder badge */}
           {k.meta?.subfinder !== false && (
             <span style={{
               fontSize: 8, padding: '1px 5px', borderRadius: 3,
@@ -243,15 +245,25 @@ function ProviderRow({ k, keyVarInfo, editValue, saving, onEdit, onCancel, onCha
             }}>subfinder</span>
           )}
 
-          {/* Workflow var badge — for keys that inject into workflow vars */}
-          {keyVarInfo && (
+          {/* Env var badge — shown for EVERY provider */}
+          {envVar && (
             <span style={{
               fontSize: 8, padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace',
-              background: k.configured ? '#0a192922' : '#161b22',
-              border: `1px solid ${k.configured ? '#58a6ff55' : '#21262d'}`,
-              color: k.configured ? '#58a6ff' : '#484f58',
+              background: k.configured ? '#0a1f0e22' : '#0d1117',
+              border: `1px solid ${k.configured ? '#3fb95044' : '#21262d'}`,
+              color: k.configured ? '#3fb950' : '#484f58',
             }}>
-              🔑 → {keyVarInfo.var}
+              ${envVar}
+            </span>
+          )}
+
+          {/* Special: censys has two env vars */}
+          {k.provider === 'censys' && k.configured && (
+            <span style={{
+              fontSize: 8, padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace',
+              background: '#0a1f0e22', border: '1px solid #3fb95044', color: '#3fb950',
+            }}>
+              $CENSYS_API_SECRET
             </span>
           )}
         </div>

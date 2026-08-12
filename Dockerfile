@@ -74,6 +74,10 @@ RUN go install github.com/bp0lr/gauplus@latest                   || true
 # ProjectDiscovery — urlfinder
 RUN go install github.com/projectdiscovery/urlfinder/cmd/urlfinder@latest || true
 
+# Subdomain recon — advanced passive sources
+RUN go install github.com/gwen001/github-subdomains@latest      || true   # GitHub code search → subdomains (uses GITHUB_TOKEN)
+RUN go install github.com/incogbyte/shosubgo@latest             || true   # Shodan subdomain API (needs SHODAN_API_KEY)
+
 # fallparams has CGO tree-sitter dependency — installed via pre-built binary in runtime stage
 
 
@@ -467,6 +471,12 @@ RUN mkdir -p /app/wordlists \
        -o /app/wordlists/subdomains-top1million-20000.txt \
     && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/subdomains-top1million-110000.txt" \
        -o /app/wordlists/subdomains-top1million-110000.txt \
+    && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/dns-Jhaddix.txt" \
+       -o /app/wordlists/dns-Jhaddix.txt \
+    && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/namelist.txt" \
+       -o /app/wordlists/namelist.txt \
+    && curl -sL "https://wordlists-cdn.assetnote.io/data/manual/best-dns-wordlist.txt" \
+       -o /app/wordlists/best-dns-wordlist.txt \
     && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-directories.txt" \
        -o /app/wordlists/raft-medium-directories.txt \
     && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/raft-medium-files.txt" \
@@ -474,7 +484,9 @@ RUN mkdir -p /app/wordlists \
     && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/burp-parameter-names.txt" \
        -o /app/wordlists/burp-parameter-names.txt \
     && curl -sL "https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/SNMP/snmp-default-community-strings-onesixtyone.txt" \
-       -o /app/wordlists/snmp-default-communities.txt
+       -o /app/wordlists/snmp-default-communities.txt \
+    && curl -sL "https://raw.githubusercontent.com/trickest/resolvers/main/resolvers.txt" \
+       -o /app/wordlists/resolvers-trickest.txt
 
 # Param discovery wordlists — extracted from arjun's bundled db after pip install
 RUN find /usr -path '*/arjun/db/medium.txt' -exec cp {} /app/wordlists/params-medium.txt \; 2>/dev/null \

@@ -102,6 +102,7 @@ class Finding(Base):
     host = Column(String(512), nullable=False, index=True)
     ip = Column(String(64))
     port = Column(Integer)
+    status_code = Column(Integer)                           # HTTP status code, for kind="http" rows
     protocol = Column(String(20))
     name = Column(String(512))
     template_id = Column(String(256))
@@ -111,6 +112,7 @@ class Finding(Base):
     evidence = Column(Text)                                 # curl-command or raw match snippet
     description = Column(Text)
     status = Column(String(20), default="open", index=True) # open | fp | resolved
+    screenshot = Column(String(1024))                       # path relative to the run's workspace, e.g. "screenshots/x.png"
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -134,6 +136,8 @@ def init_db() -> None:
             "ALTER TABLE runs ADD COLUMN steps_json TEXT DEFAULT '[]'",
             "ALTER TABLE runs ADD COLUMN paused_at DATETIME",
             "ALTER TABLE tool_versions ADD COLUMN latest_url TEXT",
+            "ALTER TABLE findings ADD COLUMN status_code INTEGER",
+            "ALTER TABLE findings ADD COLUMN screenshot TEXT",
         ]:
             try:
                 conn.execute(text(stmt))

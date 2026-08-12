@@ -19,6 +19,7 @@ import copy
 import json
 import os
 import re
+import select
 import shlex
 import shutil
 import signal
@@ -47,7 +48,7 @@ class WorkflowError(RuntimeError):
 
 # ── Template engine ───────────────────────────────────────────────────────────
 
-_PLACEHOLDER = re.compile(r'\{([A-Za-z0-9_.|-]+)\}')
+_PLACEHOLDER = re.compile(r'(?<!\$)\{([A-Za-z0-9_.|-]+)\}')
 
 
 def _resolve_key(key: str, ctx: dict[str, Any]) -> Any:
@@ -495,10 +496,29 @@ def _run_command(
             return False
 
         try:
-            for line in proc.stdout:
-                print(f'{pfx}{line}', end='', flush=True)
-                if deadline and time.monotonic() > deadline:
-                    timed_out = True
+            # Use select() so the deadline is enforced even when the subprocess
+            # produces no stdout (e.g. gobuster -q, nmap --stats-every, etc.).
+            # A plain `for line in proc.stdout:` blocks indefinitely on silent
+            # processes, making the timeout useless.
+            while True:
+                if deadline:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        timed_out = True
+                        break
+                    poll_wait = min(remaining, 0.5)
+                else:
+                    poll_wait = 0.5          # re-check proc.poll() every 0.5 s
+                ready, _, _ = select.select([proc.stdout], [], [], poll_wait)
+                if ready:
+                    line = proc.stdout.readline()
+                    if not line:             # EOF — subprocess closed stdout
+                        break
+                    print(f'{pfx}{line}', end='', flush=True)
+                elif proc.poll() is not None:
+                    # Process exited silently; drain any buffered lines then stop
+                    for line in proc.stdout:
+                        print(f'{pfx}{line}', end='', flush=True)
                     break
         finally:
             if timed_out or proc.poll() is None:
@@ -609,12 +629,24 @@ def _check_requires(requires: list[dict[str, Any]], ctx: dict[str, Any], *, quie
 
 
 def _check_outputs(outputs: dict[str, Any], ctx: dict[str, Any]) -> bool:
+    """Return True only if ALL output files exist AND are non-empty (size > 0).
+
+    Skipping a step that produced an empty output file is wrong: it usually
+    means the tool failed, timed out, or found nothing due to a transient
+    error.  Requiring non-empty ensures such steps are re-tried on the next
+    resume/re-run rather than being permanently cached as "done".
+
+    Directories (is_dir()) are only checked for existence, not size.
+    """
     workspace = Path(str(ctx.get('workspace', '.')))
     for value in outputs.values():
         p = Path(render_template(str(value), ctx))
         if not p.is_absolute():
             p = workspace / p
         if not p.exists():
+            return False
+        # For files, require non-empty; directories are always considered ok.
+        if p.is_file() and p.stat().st_size == 0:
             return False
     return True
 

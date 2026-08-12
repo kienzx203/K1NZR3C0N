@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +30,12 @@ celery_app.conf.update(
     task_track_started=True,
     worker_prefetch_multiplier=1,
     task_acks_late=True,
+    # Safety net for a hung tool subprocess — does not limit normal scans (deep
+    # portscans can legitimately take hours). Override via env for bigger scopes.
+    task_time_limit=int(os.environ.get("K1NZR3C0N_TASK_TIME_LIMIT", 43200)),
+    # Task results (return values) are never read back — free them from Redis
+    # instead of keeping them forever (default is no expiry).
+    result_expires=86400,
     beat_schedule={
         "workspace-cleanup": {
             "task": "k1nzr3c0n.workspace_cleanup",
@@ -48,6 +55,34 @@ _redis = redis_lib.from_url(REDIS_URL, decode_responses=True)
 def _init_db_on_worker_start(**_):
     from .db import init_db
     init_db()
+    _recover_orphaned_runs()
+
+
+def _recover_orphaned_runs() -> None:
+    """A worker restart (deploy, crash, OOM) kills every in-flight subprocess it
+    owned, but the DB row for that run is never told — it's left stuck showing
+    "running" forever with no process left to act on it (pause/cancel/kill-step
+    all silently do nothing). On every worker boot, close out any such orphans as
+    "failed" (not "cancelled") so Resume stays available and picks up from the
+    last completed step."""
+    from .db import Run, get_db
+
+    db = get_db()
+    try:
+        stale = db.query(Run).filter(Run.status == "running").all()
+        for run in stale:
+            if run.celery_task_id:
+                celery_app.control.revoke(run.celery_task_id, terminate=False)
+            run.status = "failed"
+            run.error_message = (
+                "Interrupted by a worker restart — no process was left running this scan. "
+                "Use Resume to continue from the last completed step."
+            )
+            run.finished_at = datetime.utcnow()
+        if stale:
+            db.commit()
+    finally:
+        db.close()
 
 
 # ── Step marker protocol ──────────────────────────────────────────────────────
@@ -73,12 +108,83 @@ _BATCH_SIZE = 20     # flush log buffer to DB every N lines
 _BATCH_SECS = 1.0    # or every N seconds
 
 
+# Subfinder uses different key names for some providers vs our internal IDs.
+_SUBFINDER_KEY_MAP: dict[str, str] = {
+    "zoomeye": "zoomeyeapi",  # subfinder v2.14+ uses "zoomeyeapi" not "zoomeye"
+}
+
+# Providers that are NOT valid subfinder sources — skip when writing subfinder config.
+# (These may be valid for uncover, direct API calls, or other tools.)
+_SUBFINDER_SKIP: frozenset[str] = frozenset({
+    "criminalip",   # uncover-only, not a subfinder source
+    "google_cse",   # custom search — not a subfinder source
+    "google_cx",    # custom search engine ID — not a subfinder source
+    "hunter",       # uncover-only (hunter.io email intelligence)
+    "greynoise",    # uncover-only
+    "binaryedge",   # not in this subfinder version's source list
+    "fullhunt",     # key-authenticated but not in current subfinder build
+    "quake",        # uncover-only in this image
+})
+
+# Uncover provider names (uncover uses simple single-word keys, different from some subfinder names).
+# Value format: plain API key, EXCEPT censys which stores "ID:SECRET" (same as DB storage).
+_UNCOVER_PROVIDERS: dict[str, str] = {
+    "shodan":     "shodan",
+    "censys":     "censys",      # stored as "ID:SECRET" — uncover uses same format
+    "fofa":       "fofa",
+    "quake":      "quake",
+    "zoomeye":    "zoomeye",     # uncover uses "zoomeye", subfinder uses "zoomeyeapi"
+    "netlas":     "netlas",
+    "binaryedge": "binaryedge",
+    "hunter":     "hunter",
+    "criminalip": "criminalip",
+    "onyphe":     "onyphe",
+    "driftnet":   "driftnet",
+    "greynoise":  "greynoise",
+}
+
+
 def _write_subfinder_config(key_map: dict[str, str]) -> None:
-    """Write all configured API keys to ~/.config/subfinder/provider-config.yaml."""
+    """Write all configured API keys to ~/.config/subfinder/provider-config.yaml.
+
+    Uses _SUBFINDER_KEY_MAP to rename provider IDs where subfinder's key name
+    differs from our internal ID (e.g., zoomeye → zoomeyeapi).
+    Providers in _SUBFINDER_SKIP are excluded (they are uncover-only or other tools).
+    """
     try:
         import yaml as _yaml
-        cfg = {p: [v] for p, v in key_map.items() if v and v.strip()}
+        cfg: dict[str, list[str]] = {}
+        for p, v in key_map.items():
+            if p in _SUBFINDER_SKIP:
+                continue  # not a valid subfinder source — skip
+            if v and v.strip():
+                sf_key = _SUBFINDER_KEY_MAP.get(p, p)
+                cfg[sf_key] = [v.strip()]
         config_dir = Path.home() / ".config" / "subfinder"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "provider-config.yaml").write_text(
+            _yaml.dump(cfg, default_flow_style=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass  # non-fatal
+
+
+def _write_uncover_config(key_map: dict[str, str]) -> None:
+    """Write ~/.config/uncover/provider-config.yaml with available API keys.
+
+    Uncover uses simple single-word provider names (shodan, fofa, censys…),
+    NOT the old compound names (shodan-api-key, fofa-email-key, etc.) used
+    in older configs.
+    """
+    try:
+        import yaml as _yaml
+        cfg: dict[str, list[str]] = {}
+        for provider, uncover_key in _UNCOVER_PROVIDERS.items():
+            value = (key_map.get(provider) or "").strip()
+            if value:
+                cfg[uncover_key] = [value]
+        config_dir = Path.home() / ".config" / "uncover"
         config_dir.mkdir(parents=True, exist_ok=True)
         (config_dir / "provider-config.yaml").write_text(
             _yaml.dump(cfg, default_flow_style=False, allow_unicode=True),
@@ -91,7 +197,9 @@ def _write_subfinder_config(key_map: dict[str, str]) -> None:
 def _inject_keys_into_cmd(cmd: list[str], key_map: dict[str, str]) -> list[str]:
     """Inject API keys as workflow --vars at run time.
 
-    Mapping: stored provider id → workflow var name
+    Mapping: stored provider id → workflow var name.
+    Only vars that the workflow runner resolves as {vars.xxx} need this path;
+    env-var-based keys are handled by _build_key_env() instead.
     """
     VAR_MAP = {
         "chaos": "chaos_key",
@@ -121,6 +229,73 @@ def _inject_keys_into_cmd(cmd: list[str], key_map: dict[str, str]) -> list[str]:
         pairs = [f"{k}={v}" for k, v in to_inject.items()]
         cmd += ["--vars"] + pairs
     return cmd
+
+
+# Map: DB provider id → environment variable name(s) injected into the subprocess.
+# Env vars take priority over workflow vars in every step that uses the pattern:
+#   KEY="${ENV_VAR:-{vars.fallback}}"
+_PROVIDER_ENV_MAP: dict[str, list[str]] = {
+    "shodan":          ["SHODAN_API_KEY"],
+    "securitytrails":  ["SECURITYTRAILS_KEY"],
+    "virustotal":      ["VIRUSTOTAL_KEY"],
+    "bevigil":         ["BEVIGIL_KEY"],
+    "fofa":            ["FOFA_KEY"],
+    "chaos":           ["CHAOS_API_KEY"],
+    "github":          ["GITHUB_TOKEN"],
+    "zoomeye":         ["ZOOMEYE_API_KEY"],
+    "binaryedge":      ["BINARYEDGE_API_KEY"],
+    "netlas":          ["NETLAS_API_KEY"],
+    "fullhunt":        ["FULLHUNT_API_KEY"],
+    "leakix":          ["LEAKIX_API_KEY"],
+    "c99":             ["C99_API_KEY"],
+    "intelx":          ["INTELX_API_KEY"],
+    "hackertarget":    ["HACKERTARGET_API_KEY"],
+    "dnsdumpster":     ["DNSDUMPSTER_API_KEY"],
+    "whoisxmlapi":     ["WHOISXMLAPI_API_KEY"],
+    "urlscan":         ["URLSCAN_API_KEY"],
+    "certspotter":     ["CERTSPOTTER_API_KEY", "CERTSPOTTER_KEY"],  # step uses CERTSPOTTER_KEY; inject both
+    "google_cse":      ["GOOGLE_CSE_KEY"],
+    "google_cx":       ["GOOGLE_CX"],
+    "qwen":            ["DASHSCOPE_API_KEY"],
+    "hunter":          ["HUNTER_API_KEY"],      # uncover-only (not in subfinder)
+    "criminalip":      ["CRIMINALIP_API_KEY"],  # uncover-only
+    "greynoise":       ["GREYNOISE_API_KEY"],   # uncover-only
+    # censys is stored as "ID:SECRET" — split into two vars
+    "censys":          ["CENSYS_API_ID", "CENSYS_API_SECRET"],
+}
+
+
+def _build_key_env(key_map: dict[str, str]) -> dict[str, str]:
+    """Build an env-var dict from the DB key_map to inject into the workflow subprocess.
+
+    DB keys override existing env vars so that /keys UI is the single source of truth.
+    Keys already set in the process environment (from .env / docker-compose) are kept
+    as fallback when the DB has no entry for that provider.
+    """
+    import os
+    env = os.environ.copy()
+
+    for provider, value in key_map.items():
+        value = (value or "").strip()
+        if not value:
+            continue
+
+        env_vars = _PROVIDER_ENV_MAP.get(provider, [])
+
+        # Special case: censys is stored as "ID:SECRET"
+        if provider == "censys":
+            if ":" in value:
+                cid, csec = value.split(":", 1)
+                env["CENSYS_API_ID"]     = cid.strip()
+                env["CENSYS_API_SECRET"] = csec.strip()
+            else:
+                env["CENSYS_API_ID"] = value
+            continue
+
+        for var in env_vars:
+            env[var] = value
+
+    return env
 
 
 def _publish(run_id: str, payload: dict) -> None:
@@ -266,10 +441,16 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
 
         _publish(run_id, {"type": "status", "status": "running"})
 
-        # Inject configured API keys before starting the subprocess
+        # Inject configured API keys before starting the subprocess.
+        # 1. Write subfinder provider-config.yaml in the worker container.
+        # 2. Inject keys as env vars so every step using ${ENV_VAR:-fallback}
+        #    gets the DB value automatically — no manual workflow var needed.
+        # 3. Also inject legacy workflow --vars (chaos_key backward compat).
         from .db import ApiKey as _ApiKey
         key_map = {r.provider: r.value for r in db.query(_ApiKey).all()}
         _write_subfinder_config(key_map)
+        _write_uncover_config(key_map)
+        proc_env = _build_key_env(key_map)
         cmd = _inject_keys_into_cmd(cmd, key_map)
 
         steps: list[dict] = json.loads(run.steps_json or "[]")
@@ -281,6 +462,7 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
+            env=proc_env,
         )
 
         log_buffer: list[str] = []

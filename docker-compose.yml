@@ -28,6 +28,16 @@ services:
       - K1NZR3C0N_BASE=/app
       - REDIS_URL=redis://redis:6379/0
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      # ── Security API keys — read from .env, auto-passed to all workflow steps ──
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SHODAN_API_KEY=${SHODAN_API_KEY}
+      - SECURITYTRAILS_KEY=${SECURITYTRAILS_KEY}
+      - VIRUSTOTAL_KEY=${VIRUSTOTAL_KEY}
+      - BEVIGIL_KEY=${BEVIGIL_KEY}
+      - FOFA_KEY=${FOFA_KEY}
+      - CENSYS_API_ID=${CENSYS_API_ID}
+      - CENSYS_API_SECRET=${CENSYS_API_SECRET}
+      - CHAOS_API_KEY=${CHAOS_API_KEY}
     depends_on:
       redis:
         condition: service_healthy
@@ -46,10 +56,18 @@ services:
       - K1NZR3C0N_BASE=/app
       - REDIS_URL=redis://redis:6379/0
       # - K1NZR3C0N_WEBHOOK_URL=https://hooks.slack.com/services/...
-      # Optional: GitHub personal access token — raises API rate limit from 60 to 5,000 req/hr.
-      # Required only if you run tool checks+updates more than once per hour without a token.
-      # Create at: https://github.com/settings/tokens (no scopes needed for public repos)
+      # ── Security API keys — all workflow steps run in this container ──────────
+      # Set values in .env — worker picks them up automatically on restart.
+      # Keys are used as-is; workflow vars are fallback only when env is empty.
       - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SHODAN_API_KEY=${SHODAN_API_KEY}
+      - SECURITYTRAILS_KEY=${SECURITYTRAILS_KEY}
+      - VIRUSTOTAL_KEY=${VIRUSTOTAL_KEY}
+      - BEVIGIL_KEY=${BEVIGIL_KEY}
+      - FOFA_KEY=${FOFA_KEY}
+      - CENSYS_API_ID=${CENSYS_API_ID}
+      - CENSYS_API_SECRET=${CENSYS_API_SECRET}
+      - CHAOS_API_KEY=${CHAOS_API_KEY}
     depends_on:
       redis:
         condition: service_healthy
@@ -72,8 +90,17 @@ services:
     environment:
       - K1NZR3C0N_BASE=/app
       - REDIS_URL=redis://redis:6379/0
-      # Optional: Slack/Discord webhook URL for run completion alerts
       # - K1NZR3C0N_WEBHOOK_URL=https://hooks.slack.com/services/...
+      # ── Security API keys — needed for scheduled workflow runs ────────────────
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - SHODAN_API_KEY=${SHODAN_API_KEY}
+      - SECURITYTRAILS_KEY=${SECURITYTRAILS_KEY}
+      - VIRUSTOTAL_KEY=${VIRUSTOTAL_KEY}
+      - BEVIGIL_KEY=${BEVIGIL_KEY}
+      - FOFA_KEY=${FOFA_KEY}
+      - CENSYS_API_ID=${CENSYS_API_ID}
+      - CENSYS_API_SECRET=${CENSYS_API_SECRET}
+      - CHAOS_API_KEY=${CHAOS_API_KEY}
     depends_on:
       redis:
         condition: service_healthy

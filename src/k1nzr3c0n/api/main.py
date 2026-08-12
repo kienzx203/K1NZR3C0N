@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ..config import REDIS_URL, STATIC_DIR
 from ..db import RunLog, init_db
-from .routes import files, findings, keys, opencode, reports, runs, terminal, tools, upload, workflows
+from .routes import assets, files, findings, keys, opencode, reports, runs, terminal, tools, upload, workflows
 
 
 @asynccontextmanager
@@ -39,6 +39,7 @@ app.include_router(runs.router,      prefix=_V1)
 app.include_router(workflows.router, prefix=_V1)
 app.include_router(files.router,     prefix=_V1)
 app.include_router(findings.router,  prefix=_V1)
+app.include_router(assets.router,    prefix=_V1)
 app.include_router(reports.router,   prefix=_V1)
 app.include_router(keys.router,      prefix=_V1)
 app.include_router(tools.router,     prefix=_V1)

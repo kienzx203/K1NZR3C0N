@@ -3,9 +3,55 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from ..db import Finding
+
+
+def _netloc_key(url: str) -> str | None:
+    """Normalise a URL → "host" or "host:port" key for screenshot matching.
+
+    gowitness records `http://host:80` / `http://host/` (trailing slash, explicit
+    default port) while httpx records `https://host` (no trailing slash, default
+    port omitted) for the very same asset — exact-string matching between the two
+    misses almost everything. Scheme is dropped entirely so a host screenshotted
+    over http still matches an https httpx sighting (the common redirect case).
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    host = parts.hostname
+    if not host:
+        return None
+    port = parts.port
+    is_default = port is None or (parts.scheme == 'http' and port == 80) or (parts.scheme == 'https' and port == 443)
+    return host if is_default else f'{host}:{port}'
+
+
+def _gowitness_screenshot_by_url(ws: Path) -> dict[str, str]:
+    """Map {host[:port] -> "screenshots/<file>.png"} from gowitness's sqlite3 db, if present."""
+    db_path = ws / "gowitness.sqlite3"
+    if not db_path.exists():
+        return {}
+    try:
+        con = sqlite3.connect(str(db_path))
+        rows = con.execute(
+            "SELECT filename, url, final_url FROM results WHERE filename != '' AND failed = 0"
+        ).fetchall()
+        con.close()
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for filename, url, final_url in rows:
+        rel = f"screenshots/{Path(filename).name}"
+        for u in (url, final_url):
+            key = _netloc_key(u) if u else None
+            if key and key not in out:
+                out[key] = rel
+    return out
 
 
 def parse_workspace(run_id: str, workspace: str) -> list[Finding]:
@@ -55,6 +101,7 @@ def _scan_nuclei(run_id: str, ws: Path, out: list[Finding]) -> None:
 def _scan_httpx(run_id: str, ws: Path, out: list[Finding]) -> None:
     # Prefer JSONL: contains tech/title/IP
     jsonl_files = _find_files(ws, ["httpx.jsonl", "httpx.json", "http_alive.jsonl"])
+    shots = _gowitness_screenshot_by_url(ws)
     for path in jsonl_files:
         for row in _iter_jsonl(path):
             url = row.get("url") or row.get("input") or ""
@@ -69,10 +116,12 @@ def _scan_httpx(run_id: str, ws: Path, out: list[Finding]) -> None:
                 host=host,
                 ip=_first(row.get("a")) or row.get("ip"),
                 port=_int_or_none(row.get("port")),
+                status_code=_int_or_none(row.get("status_code") or row.get("status-code")),
                 url=url,
                 title=row.get("title"),
                 tech=json.dumps(tech),
                 status="open",
+                screenshot=shots.get(_netloc_key(url)) if url else None,
             ))
         return  # stop after first JSONL file
 

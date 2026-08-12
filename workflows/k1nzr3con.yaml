@@ -41,12 +41,58 @@ vars:
   nmap_tcp_flags: -sV -sC -Pn -p-
   nmap_udp_flags: -sU -Pn --top-ports 200
 steps:
+- id: setup_subfinder_keys
+  name: configure subfinder + uncover API keys (supplement tasks.py config — do NOT overwrite)
+  shell: true
+  run: |
+    # tasks.py already writes full provider-config.yaml from /keys UI DB before the workflow
+    # subprocess starts. This step SUPPLEMENTS with any env-var-only keys not yet in the DB.
+    mkdir -p ~/.config/subfinder ~/.config/uncover
+    EXISTING_SF=/root/.config/subfinder/provider-config.yaml
+
+    {
+      cat "$EXISTING_SF" 2>/dev/null || true
+      ST_T="${SECURITYTRAILS_KEY:-}"
+      [ -n "$ST_T" ] && ! grep -q '^securitytrails:' "$EXISTING_SF" 2>/dev/null && \
+        printf 'securitytrails:\n  - %s\n' "$ST_T"
+      VT_T="${VIRUSTOTAL_KEY:-}"
+      [ -n "$VT_T" ] && ! grep -q '^virustotal:' "$EXISTING_SF" 2>/dev/null && \
+        printf 'virustotal:\n  - %s\n' "$VT_T"
+      ZY_T="${ZOOMEYE_API_KEY:-}"
+      [ -n "$ZY_T" ] && ! grep -q '^zoomeyeapi:' "$EXISTING_SF" 2>/dev/null && \
+        printf 'zoomeyeapi:\n  - %s\n' "$ZY_T"
+      HT_T="${HACKERTARGET_API_KEY:-}"
+      [ -n "$HT_T" ] && ! grep -q '^hackertarget:' "$EXISTING_SF" 2>/dev/null && \
+        printf 'hackertarget:\n  - %s\n' "$HT_T"
+    } > /tmp/.sf_merged.yaml 2>/dev/null || true
+    [ -s /tmp/.sf_merged.yaml ] && cp /tmp/.sf_merged.yaml "$EXISTING_SF"
+
+    EXISTING_UC=/root/.config/uncover/provider-config.yaml
+    {
+      cat "$EXISTING_UC" 2>/dev/null || true
+      HUNTER_T="${HUNTER_API_KEY:-}"
+      [ -n "$HUNTER_T" ] && ! grep -q '^hunter:' "$EXISTING_UC" 2>/dev/null && \
+        printf 'hunter:\n  - %s\n' "$HUNTER_T"
+      GN_T="${GREYNOISE_API_KEY:-}"
+      [ -n "$GN_T" ] && ! grep -q '^greynoise:' "$EXISTING_UC" 2>/dev/null && \
+        printf 'greynoise:\n  - %s\n' "$GN_T"
+    } > /tmp/.uc_merged.yaml 2>/dev/null || true
+    [ -s /tmp/.uc_merged.yaml ] && cp /tmp/.uc_merged.yaml "$EXISTING_UC"
+
+    ACTIVE=$(grep -c '^\w' ~/.config/subfinder/provider-config.yaml 2>/dev/null || echo 0)
+    ACTIVE_UC=$(grep -c '^\w' ~/.config/uncover/provider-config.yaml 2>/dev/null || echo 0)
+    printf '[setup] subfinder: %s providers | uncover: %s providers\n' "$ACTIVE" "$ACTIVE_UC"
+    printf '[setup] sources: %s\n' \
+      "$(grep '^\w' ~/.config/subfinder/provider-config.yaml 2>/dev/null | tr -d ':' | tr '\n' ',' | sed 's/,$//')"
 - id: subfinder
   name: subfinder (cert transparency + passive APIs)
   when: '{vars.run_discovery}'
+  depends_on: [setup_subfinder_keys]
+  shell: true
   optional: true
   skip_if_exists: true
-  run: subfinder -d {target} -silent -all -o {workspace}/subfinder.txt
+  timeout: 10m
+  run: subfinder -d {target} -silent -all -recursive -timeout 60 2>/dev/null > {workspace}/subfinder.txt || true; touch {workspace}/subfinder.txt
   outputs:
     file: '{workspace}/subfinder.txt'
 - id: assetfinder
@@ -77,11 +123,17 @@ steps:
     file: '{workspace}/findomain.txt'
 - id: chaos
   name: chaos (ProjectDiscovery dataset)
-  when: '{vars.run_discovery} && {vars.chaos_key}'
+  when: '{vars.run_discovery}'
   shell: true
   optional: true
   skip_if_exists: true
-  run: chaos -d {target} -silent -key {vars.chaos_key} -o {workspace}/chaos.txt 2>/dev/null; touch {workspace}/chaos.txt
+  run: |
+    CHAOS_KEY="${CHAOS_API_KEY:-{vars.chaos_key}}"
+    if [ -z "$CHAOS_KEY" ]; then
+      echo "[chaos] no CHAOS_API_KEY — skipping"; touch {workspace}/chaos.txt; exit 0
+    fi
+    chaos -d {target} -silent -key "$CHAOS_KEY" -o {workspace}/chaos.txt 2>/dev/null
+    touch {workspace}/chaos.txt
   outputs:
     file: '{workspace}/chaos.txt'
 - id: gobuster_dns

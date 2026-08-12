@@ -68,11 +68,25 @@ export const api = {
   checkToolVersions: () => req('POST', '/tools/check'),
   updateTools: (body = {}) => req('POST', '/tools/update', body),
 
+  // Asset Inventory (cross-run deduped http findings)
+  getAssets: (params = {}) => {
+    const entries = []
+    for (const [k, v] of Object.entries(params)) {
+      if (Array.isArray(v)) v.forEach(x => entries.push([k, x]))
+      else if (v != null) entries.push([k, v])
+    }
+    const s = new URLSearchParams(entries).toString()
+    return req('GET', `/assets${s ? '?' + s : ''}`)
+  },
+  getAssetsStats: () => req('GET', '/assets/stats'),
+  deleteAsset: (host, port) => req('DELETE', '/assets', { host, port: port ?? null }),
+
   // API Keys
-  getKeys: () => req('GET', '/keys'),
+  getKeys:      () => req('GET', '/keys'),
   getKeysStats: () => req('GET', '/keys/stats'),
-  setKey: (provider, value) => req('PUT', `/keys/${provider}`, { value }),
-  deleteKey: (provider) => req('DELETE', `/keys/${provider}`),
+  getEnvStatus: () => req('GET', '/keys/env-status'),
+  setKey:       (provider, value) => req('PUT', `/keys/${provider}`, { value }),
+  deleteKey:    (provider) => req('DELETE', `/keys/${provider}`),
 }
 
 export function wsUrl(runId) {

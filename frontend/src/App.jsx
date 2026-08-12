@@ -4,18 +4,21 @@ import Dashboard from './pages/Dashboard.jsx'
 import Runs from './pages/Runs.jsx'
 import RunDetail from './pages/RunDetail.jsx'
 import Findings from './pages/Findings.jsx'
+import Inventory from './pages/Inventory.jsx'
 import Terminal from './pages/Terminal.jsx'
 import Keys from './pages/Keys.jsx'
 import Tools from './pages/Tools.jsx'
 import Workflows from './pages/Workflows.jsx'
 import WorkflowEditor from './pages/WorkflowEditor.jsx'
 import Upload from './pages/Upload.jsx'
+import { getTheme, applyTheme } from './theme.js'
 
 const NAV = [
   { to: '/',           label: '◆ Dashboard',  exact: true },
   { to: '/runs',       label: '▸ Runs' },
   { to: '/workflows',  label: '◈ Workflows' },
   { to: '/findings',   label: '⚑ Findings' },
+  { to: '/inventory',  label: '▤ Inventory' },
   { to: '/upload',     label: '↑ Upload' },
   { to: '/terminal',   label: '⬡ Terminal' },
   { to: '/keys',       label: '⚷ Keys' },
@@ -27,6 +30,13 @@ const NAV_EXTERNAL = [
 ]
 
 export default function App() {
+  const [theme, setTheme] = React.useState(getTheme())
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    applyTheme(next)
+    setTheme(next)
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-[#0d1117]">
       {/* Sidebar */}
@@ -66,8 +76,15 @@ export default function App() {
             ))}
           </div>
         </nav>
-        <div className="px-4 py-3 border-t border-[#30363d]">
+        <div className="px-4 py-3 border-t border-[#30363d] flex items-center justify-between">
           <p className="text-[10px] text-[#8b949e]">v3.1.0</p>
+          <button
+            onClick={toggleTheme}
+            className="text-[10px] text-[#8b949e] hover:text-[#e6edf3] px-1.5 py-0.5 rounded hover:bg-[#161b22] transition-colors"
+            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          >
+            {theme === 'dark' ? '☀' : '🌙'}
+          </button>
         </div>
       </aside>
 
@@ -80,6 +97,7 @@ export default function App() {
           <Route path="/workflows"             element={<Workflows />} />
           <Route path="/workflows/:name"       element={<WorkflowEditor />} />
           <Route path="/findings"              element={<Findings />} />
+          <Route path="/inventory"             element={<Inventory />} />
           <Route path="/upload"                element={<Upload />} />
           <Route path="/terminal"              element={<Terminal />} />
           <Route path="/keys"                  element={<Keys />} />
