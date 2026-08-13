@@ -2203,19 +2203,42 @@ steps:
   fanout:
   - id: subzy
     shell: true
-    run: subzy run --targets {workspace}/subdomains_all_resolved.txt --concurrency 100 --verify-ssl --hide-fails > {workspace}/takeover_subzy.txt 2>/dev/null; touch {workspace}/takeover_subzy.txt
+    run: |
+      # Use subdomains_all.txt (ALL candidates including unresolved) because
+      # dangling CNAMEs — the most dangerous takeover case — have no A record
+      # and are absent from subdomains_all_resolved.txt.
+      # subzy makes its own DNS queries, so unresolved hosts are fine as input.
+      INPUT=$(test -s {workspace}/subdomains_all.txt \
+        && echo {workspace}/subdomains_all.txt \
+        || echo {workspace}/subdomains_all_resolved.txt)
+      subzy run --targets "$INPUT" --concurrency 100 --verify-ssl --hide-fails \
+        > {workspace}/takeover_subzy.txt 2>/dev/null || true
+      touch {workspace}/takeover_subzy.txt
     outputs:
       file: '{workspace}/takeover_subzy.txt'
     optional: true
   - id: subjack
     shell: true
-    run: subjack -w {workspace}/subdomains_all_resolved.txt -t 100 -timeout 30 -ssl -a -o {workspace}/takeover_subjack.txt 2>/dev/null; touch {workspace}/takeover_subjack.txt
+    run: |
+      # Same reasoning: subjack does CNAME-chain DNS lookups itself
+      INPUT=$(test -s {workspace}/subdomains_all.txt \
+        && echo {workspace}/subdomains_all.txt \
+        || echo {workspace}/subdomains_all_resolved.txt)
+      subjack -w "$INPUT" -t 100 -timeout 30 -ssl -a \
+        -o {workspace}/takeover_subjack.txt 2>/dev/null || true
+      touch {workspace}/takeover_subjack.txt
     outputs:
       file: '{workspace}/takeover_subjack.txt'
     optional: true
   - id: dnstake
     shell: true
-    run: dnstake -t {workspace}/subdomains_all_resolved.txt -o {workspace}/takeover_dnstake.txt 2>/dev/null; touch {workspace}/takeover_dnstake.txt
+    run: |
+      # dnstake resolves DNS itself — run on full candidate list
+      INPUT=$(test -s {workspace}/subdomains_all.txt \
+        && echo {workspace}/subdomains_all.txt \
+        || echo {workspace}/subdomains_all_resolved.txt)
+      dnstake -t "$INPUT" -o {workspace}/takeover_dnstake.txt 2>/dev/null || true
+      touch {workspace}/takeover_dnstake.txt
     outputs:
       file: '{workspace}/takeover_dnstake.txt'
     optional: true
