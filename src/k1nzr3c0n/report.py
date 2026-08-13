@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .db import Finding, Run, SessionLocal
+from .db import Finding, Run, SessionLocal, db_get
 
 
 _SEV_COLOR = {
@@ -36,7 +36,7 @@ def _fmt_dur(seconds: int) -> str:
 def generate_html_report(run_id: str) -> str:
     db = SessionLocal()
     try:
-        run = db.get(Run, run_id)
+        run = db_get(db, Run, run_id)
         if not run:
             raise ValueError(f"Run {run_id} not found")
 

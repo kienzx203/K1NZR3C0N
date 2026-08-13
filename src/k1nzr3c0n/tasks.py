@@ -439,12 +439,12 @@ def _send_webhook(
 
 @celery_app.task(bind=True, name="k1nzr3c0n.execute_run")
 def execute_run(self, run_id: str, cmd: list[str]) -> dict:
-    from .db import Run, RunLog, get_db
+    from .db import Run, RunLog, get_db, db_get
 
     db = get_db()
     t_start = time.monotonic()
     try:
-        run = db.get(Run, run_id)
+        run = db_get(db, Run, run_id)
         if run is None:
             return {"error": "run not found"}
 
@@ -533,7 +533,7 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
         elapsed_s = time.monotonic() - t_start
 
         # Re-fetch run — API may have already set status="cancelled"
-        run = db.get(Run, run_id)
+        run = db_get(db, Run, run_id)
 
         if _cancelled or run.status == "cancelled":
             for s in steps:
@@ -594,7 +594,7 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
     except Exception as exc:
         db.rollback()
         try:
-            run = db.get(Run, run_id)
+            run = db_get(db, Run, run_id)
             if run and run.status != "cancelled":
                 run.status = "failed"
                 run.error_message = str(exc)
@@ -633,12 +633,12 @@ def _webhook_notify(run_id: str, target: str, workflow: str, status: str, elapse
 @celery_app.task(name="k1nzr3c0n.parse_findings")
 def parse_findings(run_id: str) -> dict:
     """Parse tool outputs from the run's workspace into structured Finding rows."""
-    from .db import Finding, Run, get_db
+    from .db import Finding, Run, get_db, db_get
     from .parsers import parse_workspace
 
     db = get_db()
     try:
-        run = db.get(Run, run_id)
+        run = db_get(db, Run, run_id)
         if not run or not run.workspace:
             return {"error": "run or workspace not found"}
 
@@ -662,7 +662,7 @@ def check_tool_versions() -> dict:
     """Check installed vs latest versions for all tools. Runs daily via beat."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
     from .tools import TOOLS, WORDLISTS, get_installed_version, get_latest_version, get_latest_with_url, is_outdated
-    from .db import ToolVersion, get_db
+    from .db import ToolVersion, get_db, db_get
 
     db = get_db()
     try:
@@ -734,7 +734,7 @@ def check_tool_versions() -> dict:
                     pass
 
         for name, installed, latest, latest_url, status in results:
-            row = db.get(ToolVersion, name)
+            row = db_get(db, ToolVersion, name)
             if not row:
                 row = ToolVersion(name=name)
                 db.add(row)
@@ -776,7 +776,7 @@ def check_tool_versions() -> dict:
 def update_tool_task(name: str) -> dict:
     """Download and install the latest version of a single tool."""
     from .tools import get_tool, update_tool
-    from .db import ToolVersion, get_db
+    from .db import ToolVersion, get_db, db_get
 
     db = get_db()
     try:
@@ -784,7 +784,7 @@ def update_tool_task(name: str) -> dict:
         if not tool:
             return {"error": f"Unknown tool: {name}"}
 
-        row = db.get(ToolVersion, name)
+        row = db_get(db, ToolVersion, name)
         if not row:
             row = ToolVersion(name=name)
             db.add(row)
@@ -817,7 +817,7 @@ def update_tool_task(name: str) -> dict:
 def update_wordlist_task(name: str) -> dict:
     """Re-download a wordlist file."""
     from .tools import get_wordlist, update_wordlist
-    from .db import ToolVersion, get_db
+    from .db import ToolVersion, get_db, db_get
 
     db = get_db()
     try:
@@ -826,7 +826,7 @@ def update_wordlist_task(name: str) -> dict:
             return {"error": f"Unknown wordlist: {name}"}
 
         row_name = f"wordlist:{name}"
-        row = db.get(ToolVersion, row_name)
+        row = db_get(db, ToolVersion, row_name)
         if not row:
             row = ToolVersion(name=row_name)
             db.add(row)

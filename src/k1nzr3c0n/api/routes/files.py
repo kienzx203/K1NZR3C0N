@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse
 
 from ...config import RUNS_DIR
-from ...db import Run, get_db
+from ...db import Run, get_db, db_get
 
 router = APIRouter(tags=["files"])
 
@@ -20,7 +20,7 @@ _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 def _workspace_of(run_id: str) -> Path:
     db = get_db()
     try:
-        run = db.get(Run, run_id)
+        run = db_get(db, Run, run_id)
         if not run:
             raise HTTPException(404, "Run not found")
         if not run.workspace:

@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ...db import ApiKey, api_key_to_dict, get_db_dep
+from ...db import ApiKey, api_key_to_dict, get_db_dep, db_get
 
 router = APIRouter(tags=["keys"])
 
@@ -151,7 +151,7 @@ def upsert_key(
     if not body.value.strip():
         raise HTTPException(422, "Key value cannot be empty")
 
-    row = db.get(ApiKey, provider)
+    row = db_get(db, ApiKey, provider)
     if row:
         row.value = body.value.strip()
         row.updated_at = datetime.utcnow()
@@ -175,7 +175,7 @@ def delete_key(provider: str, db: Session = Depends(get_db_dep)) -> None:
     """Remove a provider key."""
     if provider not in _PROVIDER_IDS:
         raise HTTPException(400, f"Unknown provider: {provider!r}")
-    row = db.get(ApiKey, provider)
+    row = db_get(db, ApiKey, provider)
     if row:
         db.delete(row)
         db.commit()

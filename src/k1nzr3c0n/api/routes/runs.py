@@ -16,7 +16,7 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
 from ...config import RUNS_DIR, WORKFLOWS_DIR
-from ...db import Finding, Run, RunLog, get_db_dep, run_to_dict
+from ...db import Finding, Run, RunLog, get_db_dep, run_to_dict, db_get
 from ...tasks import execute_run
 
 router = APIRouter(tags=["runs"])
@@ -148,7 +148,7 @@ def run_stats(db: Session = Depends(get_db_dep)) -> dict[str, Any]:
 
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     result = run_to_dict(run)
@@ -167,7 +167,7 @@ def get_run_logs(
     limit: int = Query(500, le=2000),
     db: Session = Depends(get_db_dep),
 ) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     total = db.query(func.count(RunLog.id)).filter(RunLog.run_id == run_id).scalar() or 0
@@ -184,7 +184,7 @@ def get_run_logs(
 
 @router.post("/runs/{run_id}/cancel")
 def cancel_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     if run.status not in ("queued", "running"):
@@ -209,7 +209,7 @@ def cancel_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]
 
 @router.post("/runs/{run_id}/pause")
 def pause_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     if run.status != "running":
@@ -227,7 +227,7 @@ def pause_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
 @router.delete("/runs/{run_id}/pause")
 def cancel_pause(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
     """Remove the pause flag while a run is still running (cancel a pending pause)."""
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     if run.status != "running":
@@ -243,7 +243,7 @@ def cancel_pause(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, An
 
 @router.post("/runs/{run_id}/resume")
 def resume_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     if run.status not in ("paused", "failed"):
@@ -291,7 +291,7 @@ def resume_run(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]
 
 @router.delete("/runs/{run_id}", status_code=204)
 def delete_run(run_id: str, db: Session = Depends(get_db_dep)) -> None:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     db.query(RunLog).filter(RunLog.run_id == run_id).delete()

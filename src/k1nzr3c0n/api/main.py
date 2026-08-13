@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import REDIS_URL, STATIC_DIR
-from ..db import RunLog, init_db
+from ..db import RunLog, init_db, db_get
 from .routes import assets, files, findings, keys, opencode, reports, runs, terminal, tools, upload, workflows
 
 
@@ -67,7 +67,7 @@ async def ws_run_logs(websocket: WebSocket, run_id: str):
     This endpoint only streams new messages from Redis pubsub to avoid
     duplicate delivery when the client reconnects.
     """
-    from ..db import Run, get_db
+    from ..db import Run, get_db, db_get
 
     await websocket.accept()
     db = get_db()
@@ -77,7 +77,7 @@ async def ws_run_logs(websocket: WebSocket, run_id: str):
         # Always send current total so client knows how many lines exist in DB
         await websocket.send_json({"type": "log_meta", "total": total_logs})
 
-        run = db.get(Run, run_id)
+        run = db_get(db, Run, run_id)
         if run and run.status in ("completed", "failed", "cancelled", "paused"):
             await websocket.send_json({"type": "done", "status": run.status, "steps": json.loads(run.steps_json or "[]")})
             return

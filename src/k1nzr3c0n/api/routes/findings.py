@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ...db import Finding, Run, finding_to_dict, get_db_dep
+from ...db import Finding, Run, finding_to_dict, get_db_dep, db_get
 from ...tasks import parse_findings
 
 router = APIRouter(tags=["findings"])
@@ -70,7 +70,7 @@ def run_findings(
     offset: int = Query(0),
     db: Session = Depends(get_db_dep),
 ) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     q = db.query(Finding).filter(Finding.run_id == run_id)
@@ -98,7 +98,7 @@ def patch_finding(
 ) -> dict[str, Any]:
     if body.status not in ("open", "fp", "resolved"):
         raise HTTPException(400, "status must be one of: open, fp, resolved")
-    f = db.get(Finding, finding_id)
+    f = db_get(db, Finding, finding_id)
     if not f:
         raise HTTPException(404, "Finding not found")
     f.status = body.status
@@ -108,7 +108,7 @@ def patch_finding(
 
 @router.post("/runs/{run_id}/findings/reparse", status_code=202)
 def reparse_findings(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    run = db.get(Run, run_id)
+    run = db_get(db, Run, run_id)
     if not run:
         raise HTTPException(404, "Run not found")
     task = parse_findings.delay(run_id)

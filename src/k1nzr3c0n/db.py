@@ -161,6 +161,17 @@ def get_db() -> Session:
     return SessionLocal()
 
 
+import sqlalchemy as _sa
+_SA_MAJOR = int(_sa.__version__.split(".")[0])
+
+
+def db_get(session: Session, model, pk):
+    """Session.get() compat: SQLAlchemy 1.x uses query().get(), 2.x uses session.get()."""
+    if _SA_MAJOR >= 2:
+        return session.get(model, pk)
+    return session.query(model).get(pk)
+
+
 def get_db_dep() -> Generator[Session, None, None]:
     """FastAPI dependency — yields a session and closes it when the request is done."""
     db = SessionLocal()
