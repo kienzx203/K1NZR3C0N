@@ -1062,6 +1062,18 @@ def run_workflow(
         continue_on_error=continue_on_error,
     )
 
+    # Optional workflow-level cap on concurrent steps within a parallel level —
+    # keeps resource-heavy phases (API rate limits, RAM) bounded even when a
+    # level contains many independent steps.
+    max_parallel = workflow.get('max_parallel')
+    if max_parallel is not None:
+        try:
+            max_parallel = int(max_parallel)
+        except (TypeError, ValueError):
+            raise WorkflowError("'max_parallel' must be an integer.")
+        if max_parallel < 1:
+            raise WorkflowError("'max_parallel' must be >= 1.")
+
     levels = _execution_levels(steps)
     t_run_start = time.monotonic()
 
@@ -1072,8 +1084,10 @@ def run_workflow(
         n = len(level_steps)
         if n > 1 and not print_plan:
             ids = ', '.join(s['id'] for s in level_steps)
-            info(f'Parallel ({n}): {ids}')
-            with ThreadPoolExecutor(max_workers=n) as pool:
+            workers = min(n, max_parallel) if max_parallel else n
+            cap_note = f' — max {workers} concurrent' if workers < n else ''
+            info(f'Parallel ({n}){cap_note}: {ids}')
+            with ThreadPoolExecutor(max_workers=workers) as pool:
                 fut_map = {pool.submit(_execute_step, s, state): s for s in level_steps}
                 results: dict[str, str] = {}
                 for fut in as_completed(fut_map):

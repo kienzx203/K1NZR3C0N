@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { api } from '../api'
 
 const CAT_LABEL = {
@@ -73,6 +73,15 @@ export default function Tools() {
 
   useEffect(() => { load() }, [load])
 
+  // handleCheck's poll/timeout survive until the version check finishes —
+  // clear them on unmount or they keep setState-ing a dead component.
+  const checkPollRef = useRef(null)
+  const checkTimerRef = useRef(null)
+  useEffect(() => () => {
+    if (checkPollRef.current) clearInterval(checkPollRef.current)
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current)
+  }, [])
+
   // Poll every 3s while any tool is updating or checking
   useEffect(() => {
     if (!data) return
@@ -97,15 +106,19 @@ export default function Tools() {
     }
     // Poll every 2s until last_checked_at advances (task completed)
     let done = false
-    const timer = setTimeout(() => { done = true; setChecking(false) }, 120_000)
-    const poll = setInterval(async () => {
-      if (done) { clearInterval(poll); return }
+    if (checkPollRef.current) clearInterval(checkPollRef.current)
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current)
+    checkTimerRef.current = setTimeout(() => { done = true; setChecking(false) }, 120_000)
+    checkPollRef.current = setInterval(async () => {
+      if (done) { clearInterval(checkPollRef.current); checkPollRef.current = null; return }
       try {
         const fresh = await api.getTools()
         const afterTs = fresh.tools.find(t => t.last_checked_at)?.last_checked_at ?? null
         if (afterTs && afterTs !== beforeTs) {
-          clearInterval(poll)
-          clearTimeout(timer)
+          clearInterval(checkPollRef.current)
+          clearTimeout(checkTimerRef.current)
+          checkPollRef.current = null
+          checkTimerRef.current = null
           setData(fresh)
           setChecking(false)
         }

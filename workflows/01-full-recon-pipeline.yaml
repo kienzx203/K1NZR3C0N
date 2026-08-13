@@ -1,5 +1,10 @@
 name: 01-full-recon-pipeline
 description: 'Full recon pipeline: passive+active subdomain → ASN/IP recon → amass intel → org uncover → TLS SAN mining → DNS resolve → IP grouping → HTTP probe → CDN check → favicon hash pivot → vhost IP fuzz → IP/PTR pivot → URL crawl → JS analysis → takeover → cloud storage → nuclei/afrog vuln scan'
+# Cap on concurrent steps within a parallel level. The passive phase runs ~30
+# independent sources in one level; 8 at a time keeps RAM/CPU bounded on the
+# scan VM. These sources are API/CT queries (TCP), NOT DNS floods — safe for
+# VMware NAT. The DNS/portscan-heavy phases below stay sequential anyway.
+max_parallel: 8
 vars:
   run_passive: 'true'
   run_waymore: 'true'
@@ -179,7 +184,7 @@ steps:
 - id: p_assetfinder
   name: '[passive] assetfinder — Facebook CT + various APIs'
   depends_on:
-  - p_subfinder
+  - setup_subfinder_keys
   run_on_failed_deps: true
   timeout: 5m
   when: '{vars.run_passive}'
@@ -192,7 +197,7 @@ steps:
 - id: p_findomain
   name: '[passive] findomain — certificate transparency + APIs'
   depends_on:
-  - p_assetfinder
+  - setup_subfinder_keys
   run_on_failed_deps: true
   timeout: 5m
   when: '{vars.run_passive}'
@@ -204,7 +209,7 @@ steps:
 - id: p_sublist3r
   name: '[passive] sublist3r — search engines (Google/Bing/Baidu/Netcraft)'
   depends_on:
-  - p_findomain
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -217,7 +222,7 @@ steps:
 - id: p_amass
   name: '[passive] amass — OWASP passive multi-source'
   depends_on:
-  - p_sublist3r
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -230,7 +235,7 @@ steps:
 - id: p_chaos
   name: '[passive] chaos — ProjectDiscovery bug-bounty dataset'
   depends_on:
-  - p_amass
+  - setup_subfinder_keys
   run_on_failed_deps: true
   timeout: 5m
   when: '{vars.run_passive}'
@@ -251,7 +256,7 @@ steps:
 - id: p_oneforall
   name: '[passive] OneForAll — comprehensive 60-source aggregator'
   depends_on:
-  - p_chaos
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -275,7 +280,7 @@ steps:
 - id: p_cero
   name: '[passive] cero — TLS certificate SAN extraction via SNI'
   depends_on:
-  - p_oneforall_extract
+  - setup_subfinder_keys
   run_on_failed_deps: true
   timeout: 10m
   when: '{vars.run_passive}'
@@ -288,7 +293,7 @@ steps:
 - id: p_uncover
   name: '[passive] uncover — Shodan/Fofa/Censys/Hunter/Netlas OSINT'
   depends_on:
-  - p_cero
+  - setup_subfinder_keys
   run_on_failed_deps: true
   timeout: 10m
   when: '{vars.run_passive}'
@@ -310,7 +315,7 @@ steps:
 - id: p_uncover_org
   name: '[passive] uncover — org-name search across Shodan/FOFA/ZoomEye (finds IPs + subs under org name)'
   depends_on:
-  - p_uncover
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive} && {vars.run_uncover_org} && {vars.org_name}'
   shell: true
@@ -338,7 +343,7 @@ steps:
     sed 's|https\?://||; s|/.*||; s|:.*||' {workspace}/p_uncover_org_raw.txt \
       | tr '[:upper:]' '[:lower:]' | sort -u > {workspace}/p_uncover_org_hosts.txt
     grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' {workspace}/p_uncover_org_hosts.txt \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/p_uncover_org_in_scope.txt || true
     comm -23 <(sort {workspace}/p_uncover_org_hosts.txt) <(sort {workspace}/p_uncover_org_in_scope.txt) \
       > {workspace}/p_uncover_org_offdomain.txt 2>/dev/null || true
@@ -352,7 +357,7 @@ steps:
 - id: p_waybackurls
   name: '[passive] waybackurls — extract subdomains from Wayback Machine URLs (saves full URL corpus too)'
   depends_on:
-  - p_uncover_org_filter
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -371,7 +376,7 @@ steps:
 - id: p_gau
   name: '[passive] gau — extract subdomains from GAU URL archive (saves full URL corpus too)'
   depends_on:
-  - p_waybackurls
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -390,7 +395,7 @@ steps:
 - id: p_waymore
   name: '[passive] waymore — Wayback+CommonCrawl+OTX+URLScan URL archive → subdomains'
   depends_on:
-  - p_gau
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive} && {vars.run_waymore}'
   shell: true
@@ -404,7 +409,7 @@ steps:
 - id: p_urlfinder
   name: '[passive] urlfinder — Wayback+AlienVault+CommonCrawl+URLScan URL archive → subdomains'
   depends_on:
-  - p_waymore
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive} && {vars.run_waymore}'
   shell: true
@@ -418,7 +423,7 @@ steps:
 - id: p_crtsh
   name: '[passive] crt.sh — certificate transparency direct API (wildcard % + exact domain — finds multi-SAN certs)'
   depends_on:
-  - p_urlfinder
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -440,7 +445,7 @@ steps:
 - id: p_certspotter
   name: '[passive] certspotter — SSLMate CT log API (different dataset from crt.sh, free)'
   depends_on:
-  - p_crtsh
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -475,7 +480,7 @@ steps:
 - id: p_hackertarget
   name: '[passive] hackertarget — free DNS lookup API (no key required)'
   depends_on:
-  - p_certspotter
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -491,7 +496,7 @@ steps:
 - id: p_alienvault
   name: '[passive] alienvault OTX — passive DNS + URL intel → subdomains'
   depends_on:
-  - p_hackertarget
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -515,7 +520,7 @@ steps:
 - id: p_rapiddns
   name: '[passive] rapiddns — fast passive DNS lookup (no key required)'
   depends_on:
-  - p_alienvault
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -532,7 +537,7 @@ steps:
 - id: p_gauplus
   name: '[passive] gauplus — extended URL archive (Wayback+OTX+VirusTotal+URLScan+more) → subdomains'
   depends_on:
-  - p_rapiddns
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -551,7 +556,7 @@ steps:
 - id: p_urlscan
   name: '[passive] urlscan.io — global scan index (finds subs from security researcher scans)'
   depends_on:
-  - p_gauplus
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -590,7 +595,7 @@ steps:
 - id: p_github_code
   name: '[passive] github code search — find hardcoded subdomains in public repos (uses GITHUB_TOKEN)'
   depends_on:
-  - p_urlscan
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -628,7 +633,7 @@ steps:
 - id: p_securitytrails
   name: '[passive] securitytrails API — historical passive DNS'
   depends_on:
-  - p_github_code
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -647,7 +652,7 @@ steps:
 - id: p_virustotal
   name: '[passive] virustotal passive DNS — huge historical dataset (needs VIRUSTOTAL_KEY)'
   depends_on:
-  - p_securitytrails
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -675,7 +680,7 @@ steps:
 - id: p_bevigil
   name: '[passive] bevigil — mobile app (APK/IPA) subdomain recon (needs BEVIGIL_KEY)'
   depends_on:
-  - p_virustotal
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -697,7 +702,7 @@ steps:
 - id: p_shosubgo
   name: '[passive] shosubgo — Shodan subdomain database (needs SHODAN_API_KEY)'
   depends_on:
-  - p_bevigil
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -728,7 +733,7 @@ steps:
 - id: p_threatcrowd
   name: '[passive] threatcrowd + dnstable — threat intel passive DNS (free)'
   depends_on:
-  - p_shosubgo
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
@@ -753,7 +758,7 @@ steps:
 - id: p_amass_active
   name: '[active] amass enum active — DNS brute + AXFR + reverse + cert (slow, thorough)'
   depends_on:
-  - p_threatcrowd
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_amass_active}'
   shell: true
@@ -770,7 +775,7 @@ steps:
 - id: axfr_check
   name: '[active] AXFR zone transfer — attempt on all authoritative NS records'
   depends_on:
-  - p_amass_active
+  - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_axfr}'
   shell: true
@@ -799,6 +804,36 @@ steps:
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
+  - p_subfinder
+  - p_assetfinder
+  - p_findomain
+  - p_sublist3r
+  - p_amass
+  - p_chaos
+  - p_oneforall
+  - p_oneforall_extract
+  - p_cero
+  - p_uncover
+  - p_uncover_org
+  - p_uncover_org_filter
+  - p_waybackurls
+  - p_gau
+  - p_waymore
+  - p_urlfinder
+  - p_crtsh
+  - p_certspotter
+  - p_hackertarget
+  - p_alienvault
+  - p_rapiddns
+  - p_gauplus
+  - p_urlscan
+  - p_github_code
+  - p_securitytrails
+  - p_virustotal
+  - p_bevigil
+  - p_shosubgo
+  - p_threatcrowd
+  - p_amass_active
   - axfr_check
   run_on_failed_deps: true
   timeout: 5m
@@ -841,7 +876,7 @@ steps:
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
       | tr '[:upper:]' '[:lower:]' \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/passive_merged.txt
   outputs:
     file: '{workspace}/passive_merged.txt'
@@ -1022,9 +1057,14 @@ steps:
     timeout: 60m
     run: |
       # massdns: ultra-fast raw DNS — use dns-Jhaddix 2.17M entries for maximum coverage
-      RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} \
-              || printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' \
-                 > /tmp/resolvers_fallback.txt && echo /tmp/resolvers_fallback.txt)
+      # NOTE: explicit if/else — `a && b || c && d` parses as ((a&&b)||c)&&d in bash,
+      # which made RFILE a two-line string when the resolvers file EXISTS.
+      if test -s {vars.resolvers_file}; then
+        RFILE={vars.resolvers_file}
+      else
+        printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > /tmp/resolvers_fallback.txt
+        RFILE=/tmp/resolvers_fallback.txt
+      fi
       # Use Assetnote 9.5M if available, else Jhaddix 2.17M
       WLIST=$(test -s {vars.sub_wordlist_assetnote} && echo {vars.sub_wordlist_assetnote} || echo {vars.sub_wordlist_jhaddix})
       printf '[massdns] using wordlist: %s (%s entries)\n' "$WLIST" "$(wc -l < "$WLIST")"
@@ -1235,9 +1275,13 @@ steps:
       printf 'Generated target-specific wordlist: %s candidates\n' "$WLIST_COUNT"
 
       # ── Step 4: brute-force the generated wordlist ────────────────────────
-      RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || \
-        printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' \
-        > {workspace}/resolvers_fallback.txt && echo {workspace}/resolvers_fallback.txt)
+      # Explicit if/else — see massdns_brute note on the `a && b || c && d` precedence trap.
+      if test -s {vars.resolvers_file}; then
+        RFILE={vars.resolvers_file}
+      else
+        printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt
+        RFILE={workspace}/resolvers_fallback.txt
+      fi
 
       cat {workspace}/target_custom_wordlist.txt | puredns bruteforce {target} \
         --resolvers "$RFILE" \
@@ -1281,7 +1325,7 @@ steps:
     ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
       | tr '[:upper:]' '[:lower:]' \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/subdomains_all.txt
     TOTAL=$(wc -l < {workspace}/subdomains_all.txt)
     printf 'merge_all: passive=%s active=%s perm=%s → total_unique=%s\n' "$PASSIVE" "$ACTIVE" "$PERM" "$TOTAL"
@@ -1301,8 +1345,13 @@ steps:
   retries: 1
   timeout: 30m
   run: |
-    RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || \
-      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt && echo {workspace}/resolvers_fallback.txt)
+    # Explicit if/else — see massdns_brute note on the `a && b || c && d` precedence trap.
+    if test -s {vars.resolvers_file}; then
+      RFILE={vars.resolvers_file}
+    else
+      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt
+      RFILE={workspace}/resolvers_fallback.txt
+    fi
     CANDIDATES=$(wc -l < {steps.merge_all_subdomains.subdomains_all} 2>/dev/null || echo 0)
     printf 'puredns: resolving %s candidates (rate-limit=%s qps, wildcard-tests=%s)...\n' "$CANDIDATES" "{vars.puredns_rate}" "{vars.wildcard_tests}"
     puredns resolve {steps.merge_all_subdomains.subdomains_all} \
@@ -1510,7 +1559,7 @@ steps:
       | sed 's/^\*\.//' \
       | tr '[:upper:]' '[:lower:]' \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/tlsx_all_subs.txt || true
     comm -23 \
       <(sort {workspace}/tlsx_all_subs.txt 2>/dev/null || true) \
@@ -1625,7 +1674,9 @@ steps:
   depends_on:
   - naabu_asn_scan
   run_on_failed_deps: true
-  timeout: 2h
+  # NOTE: on a fanout step the engine ignores this parent timeout — the
+  # effective cap is fanout_timeout_default below (kept equal for clarity).
+  timeout: 4h
   when: '{vars.run_deep_portscan}'
   optional: true
   fanout_concurrency: 1
@@ -1635,15 +1686,34 @@ steps:
     shell: true
     run: |
       # Use all resolved subdomains if available; fallback to root target
-      INPUT=$(test -s {workspace}/subdomains_all_resolved.txt \
-        && echo {workspace}/subdomains_all_resolved.txt \
-        || echo {target})
-      rustscan -a "$INPUT" \
-        --range 1-65535 --scan-order random \
-        --batch-size {vars.rustscan_batch} \
-        --timeout {vars.rustscan_timeout_ms} \
-        --tries 2 --ulimit 5000 \
-        -- -Pn -sV -sC --open -oN {workspace}/rustscan_full.txt 2>/dev/null || true
+      if test -s {workspace}/subdomains_all_resolved.txt; then
+        INPUT={workspace}/subdomains_all_resolved.txt
+      else
+        printf '%s\n' {target} > {workspace}/rustscan_hosts.txt
+        INPUT={workspace}/rustscan_hosts.txt
+      fi
+      printf 'rustscan: %s hosts — full port range (chunked)\n' "$(wc -l < "$INPUT")"
+      rm -f {workspace}/rustscan_full.txt
+      # rustscan -a expects a COMMA-SEPARATED host list, NOT a file path —
+      # passing a file makes it resolve the path as a hostname and scan nothing.
+      # Chunk into 500-host batches (ARG_MAX safety for huge lists), scan
+      # sequentially, merge the nmap outputs.
+      split -l 500 -d "$INPUT" {workspace}/.rs_chunk_ 2>/dev/null || cp "$INPUT" {workspace}/.rs_chunk_00
+      CHUNK_N=0
+      for CF in {workspace}/.rs_chunk_*; do
+        test -s "$CF" || continue
+        HOSTLIST=$(paste -sd, "$CF")
+        rustscan -a "$HOSTLIST" \
+          --range 1-65535 --scan-order random \
+          --batch-size {vars.rustscan_batch} \
+          --timeout {vars.rustscan_timeout_ms} \
+          --tries 2 --ulimit 5000 \
+          -- -Pn -sV -sC --open -oN {workspace}/.rs_nmap_$CHUNK_N 2>/dev/null || true
+        cat {workspace}/.rs_nmap_$CHUNK_N >> {workspace}/rustscan_full.txt 2>/dev/null || true
+        rm -f {workspace}/.rs_nmap_$CHUNK_N
+        CHUNK_N=$((CHUNK_N + 1))
+      done
+      rm -f {workspace}/.rs_chunk_*
       touch {workspace}/rustscan_full.txt
     outputs:
       file: '{workspace}/rustscan_full.txt'
@@ -1771,7 +1841,7 @@ steps:
     sed 's|https\?://||; s|/.*||; s|:.*||' {workspace}/favicon_related_raw.txt \
       | tr '[:upper:]' '[:lower:]' | sort -u > {workspace}/favicon_hosts.txt
     grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' {workspace}/favicon_hosts.txt \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/favicon_in_scope.txt || true
     comm -23 <(sort {workspace}/favicon_hosts.txt) <(sort {workspace}/favicon_in_scope.txt) \
       > {workspace}/favicon_related_offdomain.txt 2>/dev/null || true
@@ -1842,7 +1912,7 @@ steps:
     touch {workspace}/vhost_new_hosts.txt
     (cat {workspace}/vhost_ffuf_hits.txt 2>/dev/null; cat {workspace}/vhost_ssl_san_hits.txt 2>/dev/null) \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/vhost_all_hits.txt || true
     comm -23 <(sort {workspace}/vhost_all_hits.txt 2>/dev/null) \
       <(sort {workspace}/subdomains_all_resolved.txt 2>/dev/null) \
@@ -1899,7 +1969,7 @@ steps:
     sed 's/\.$//' {workspace}/ip_pivot_ptr_raw.txt | tr '[:upper:]' '[:lower:]' | sort -u \
       > {workspace}/ip_pivot_hosts.txt
     grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' {workspace}/ip_pivot_hosts.txt \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/ip_pivot_in_scope.txt || true
     comm -23 <(sort {workspace}/ip_pivot_hosts.txt) <(sort {workspace}/ip_pivot_in_scope.txt) \
       > {workspace}/ip_pivot_neighbors.txt 2>/dev/null || true
@@ -1923,7 +1993,7 @@ steps:
       cat {workspace}/vhost_new_hosts.txt  2>/dev/null || true
       cat {workspace}/ip_pivot_in_scope.txt 2>/dev/null || true
     ) | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/pivot_new_candidates.txt
     touch {workspace}/pivot_new_candidates.txt
     printf 'Pivot new candidates: %s\n' "$(wc -l < {workspace}/pivot_new_candidates.txt)"
@@ -2200,7 +2270,7 @@ steps:
       grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/hakrawler_urls.txt 2>/dev/null || true
     ) | sed 's/^\*\.//' | tr '[:upper:]' '[:lower:]' \
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
-      | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/js_subs.txt || true
     touch {workspace}/js_subs.txt
     printf 'JS/crawl-discovered subdomains (jsapiscan+jsubfinder+corpus): %s\n' "$(wc -l < {workspace}/js_subs.txt)"

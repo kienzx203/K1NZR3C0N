@@ -15,6 +15,9 @@ router = APIRouter(tags=["files"])
 
 _TEXT_EXTS = {".txt", ".log", ".md", ".yaml", ".json", ".jsonl", ".csv", ".xml"}
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+# Cap in-memory text previews — workspaces can hold 100MB+ URL/JSONL files and
+# read_text() loads the whole file into server RAM.
+_MAX_TEXT_PREVIEW = 10 * 1024 * 1024
 
 
 def _workspace_of(run_id: str) -> Path:
@@ -25,7 +28,8 @@ def _workspace_of(run_id: str) -> Path:
             raise HTTPException(404, "Run not found")
         if not run.workspace:
             raise HTTPException(404, "Workspace not set")
-        return Path(run.workspace)
+        # Resolve so the containment check below compares canonical paths.
+        return Path(run.workspace).resolve()
     finally:
         db.close()
 
@@ -100,16 +104,25 @@ def read_file(run_id: str, file_path: str):
     ws = _workspace_of(run_id)
     target = (ws / file_path).resolve()
 
-    if not str(target).startswith(str(ws)):
+    # String-prefix checks are bypassable (sibling dir ".../ts-evil" passes a
+    # ".../ts" prefix); use proper path containment instead.
+    if not target.is_relative_to(ws):
         raise HTTPException(403, "Path traversal not allowed")
-    if not target.exists():
+    if not target.is_file():
         raise HTTPException(404, "File not found")
 
     ext = target.suffix.lower()
     if ext == ".json" or ext == ".jsonl":
-        raw = target.read_text(encoding="utf-8", errors="replace")
-        return PlainTextResponse(raw, media_type="application/json")
+        return PlainTextResponse(_read_capped(target), media_type="application/json")
     if ext in _TEXT_EXTS:
-        raw = target.read_text(encoding="utf-8", errors="replace")
-        return PlainTextResponse(raw)
+        return PlainTextResponse(_read_capped(target))
     return FileResponse(str(target))
+
+
+def _read_capped(target: Path) -> str:
+    size = target.stat().st_size
+    if size <= _MAX_TEXT_PREVIEW:
+        return target.read_text(encoding="utf-8", errors="replace")
+    with target.open("r", encoding="utf-8", errors="replace") as fh:
+        head = fh.read(_MAX_TEXT_PREVIEW)
+    return head + f"\n\n[... truncated: file is {size} bytes, showing first {_MAX_TEXT_PREVIEW} ...]"

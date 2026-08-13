@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api.js'
 import SevBadge, { SEV_COLOR } from './SevBadge.jsx'
 
@@ -32,6 +32,11 @@ export default function FindingsPanel({ runId }) {
   const [expanded, setExpanded] = useState(null)
   const [loading, setLoading] = useState(false)
   const [reparsing, setReparsing] = useState(false)
+  const pollRef = useRef(null)
+
+  // Clear the reparse poll on unmount — otherwise it keeps firing load()
+  // (setState on an unmounted component) after the user navigates away.
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,10 +65,11 @@ export default function FindingsPanel({ runId }) {
       await api.reparseFinding(runId)
       // Poll until findings count changes or 10 attempts
       let attempts = 0
-      const poll = setInterval(async () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+      pollRef.current = setInterval(async () => {
         attempts++
         await load()
-        if (attempts >= 10) { clearInterval(poll); setReparsing(false) }
+        if (attempts >= 10) { clearInterval(pollRef.current); pollRef.current = null; setReparsing(false) }
       }, 1500)
     } catch (_) { setReparsing(false) }
   }

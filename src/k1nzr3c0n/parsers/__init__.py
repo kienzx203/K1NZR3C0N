@@ -262,9 +262,16 @@ def _scan_gau(run_id: str, ws: Path, out: list[Finding]) -> None:
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _find_files(ws: Path, patterns: list[str]) -> list[Path]:
+    # Dedupe: a wildcard pattern (e.g. "nuclei*.jsonl") can re-match files
+    # already returned by an earlier explicit pattern, which would scan the same
+    # file twice and duplicate every finding row.
     results: list[Path] = []
+    seen: set[Path] = set()
     for pat in patterns:
-        results.extend(ws.glob(pat))
+        for p in ws.glob(pat):
+            if p not in seen:
+                seen.add(p)
+                results.append(p)
     return results
 
 

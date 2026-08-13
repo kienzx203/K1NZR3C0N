@@ -1,0 +1,13 @@
+# Normalize line endings on checkin — the repo accumulated mixed CRLF/LF
+# (Windows checkout vs Kali deploy) which produced huge phantom diffs.
+* text=auto eol=lf
+
+# Never touch binary artifacts
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

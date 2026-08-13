@@ -5,6 +5,10 @@
 runs/*
 !runs/.gitkeep
 
+# Local scratch / captured logs — not source
+stdout
+.tmp_logon.html
+
 # Reports
 reports/
 install.sh

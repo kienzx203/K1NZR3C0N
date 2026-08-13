@@ -53,6 +53,7 @@ class Run(Base):
     continue_on_error = Column(Boolean, default=False)
     resume = Column(Boolean, default=False)
     celery_task_id = Column(String(64))
+    pid = Column(Integer)  # workflow runner pid (== pgid) — killed on worker restart
     returncode = Column(Integer)
     error_message = Column(Text)
     steps_json = Column(Text, default="[]")
@@ -144,6 +145,7 @@ def init_db() -> None:
         for stmt in [
             "ALTER TABLE runs ADD COLUMN steps_json TEXT DEFAULT '[]'",
             "ALTER TABLE runs ADD COLUMN paused_at DATETIME",
+            "ALTER TABLE runs ADD COLUMN pid INTEGER",
             "ALTER TABLE tool_versions ADD COLUMN latest_url TEXT",
             "ALTER TABLE findings ADD COLUMN status_code INTEGER",
             "ALTER TABLE findings ADD COLUMN screenshot TEXT",

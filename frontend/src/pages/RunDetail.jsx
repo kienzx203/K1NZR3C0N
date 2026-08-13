@@ -22,6 +22,10 @@ export default function RunDetail() {
   const [pausing, setPausing] = useState(false)
   const [resuming, setResuming] = useState(false)
   const wsRef = useRef(null)
+  // Latest run.status readable inside the WS effect without re-running it
+  // (the old [run?.status] dep reopened the socket on every status event).
+  const statusRef = useRef(null)
+  useEffect(() => { statusRef.current = run?.status }, [run?.status])
 
   // Fetch initial log history via HTTP — works for both running and completed runs.
   // WS is live-only (no history), so this is the only source for previously written lines.
@@ -51,45 +55,102 @@ export default function RunDetail() {
   }, [run?.status, id])
 
   useEffect(() => {
-    if (!run) return
-    if (['completed', 'failed', 'cancelled', 'paused'].includes(run.status)) return
+    const TERMINAL = ['completed', 'failed', 'cancelled', 'paused', 'not_found']
+    // Cap the in-memory live buffer — scans can emit 100k+ lines and the old
+    // unbounded [...prev, line] copy pegged a CPU core. Older lines stay
+    // reachable via LogViewer's "load older" (totalLogs + HTTP fetch).
+    const MAX_LIVE_LOGS = 5000
+    let disposed = false
+    let ws = null
+    let reconnectTimer = null
+    let attempts = 0
 
-    const ws = new WebSocket(wsUrl(id))
-    wsRef.current = ws
+    function connect() {
+      if (disposed || TERMINAL.includes(statusRef.current)) return
+      ws = new WebSocket(wsUrl(id))
+      wsRef.current = ws
 
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data)
-      if (data.type === 'log_meta') {
-        // Server tells us the current total in DB — used by LogViewer "load older"
-        setTotalLogs(prev => Math.max(prev, data.total))
+      ws.onopen = () => { attempts = 0 }
+
+      ws.onmessage = (e) => {
+        let data
+        try { data = JSON.parse(e.data) } catch { return }
+        if (data.type === 'log_meta') {
+          // Server tells us the current total in DB — used by LogViewer "load older"
+          setTotalLogs(prev => Math.max(prev, data.total))
+        }
+        if (data.type === 'log') {
+          // Append only NEW live lines; history already loaded via HTTP above
+          setLogs(prev => {
+            const next = prev.length >= MAX_LIVE_LOGS ? prev.slice(prev.length - MAX_LIVE_LOGS + 1) : prev.slice()
+            next.push(data.message)
+            return next
+          })
+          setTotalLogs(prev => prev + 1)
+        }
+        if (data.type === 'step') {
+          setSteps(data.steps)
+        }
+        if (data.type === 'status') {
+          statusRef.current = data.status
+          setRun(prev => prev ? { ...prev, status: data.status } : prev)
+        }
+        if (data.type === 'done') {
+          statusRef.current = data.status
+          setPausing(false)
+          setResuming(false)
+          setRun(prev => prev ? {
+            ...prev,
+            status: data.status,
+            finished_at: prev.finished_at || new Date().toISOString(),
+          } : prev)
+          if (data.steps) setSteps(data.steps)
+          try { ws.close() } catch { /* already closed */ }
+          // Re-fetch full run to pick up server-side finished_at and findings_count
+          api.getRun(id).then(r => { setRun(r); setSteps(r.steps || []) }).catch(() => {})
+        }
       }
-      if (data.type === 'log') {
-        // Append only NEW live lines; history already loaded via HTTP above
-        setLogs(prev => [...prev, data.message])
-        setTotalLogs(prev => prev + 1)
+
+      ws.onclose = () => {
+        if (disposed || TERMINAL.includes(statusRef.current)) return
+        // Reconnect with capped backoff — server restart or a dropped
+        // connection used to freeze the UI on "running" forever.
+        const delay = Math.min(1000 * 2 ** attempts, 15000)
+        attempts += 1
+        reconnectTimer = setTimeout(connect, delay)
       }
-      if (data.type === 'step') {
-        setSteps(data.steps)
-      }
-      if (data.type === 'status') {
-        setRun(prev => prev ? { ...prev, status: data.status } : prev)
-      }
-      if (data.type === 'done') {
-        setPausing(false)
-        setResuming(false)
-        setRun(prev => prev ? {
-          ...prev,
-          status: data.status,
-          finished_at: prev.finished_at || new Date().toISOString(),
-        } : prev)
-        if (data.steps) setSteps(data.steps)
-        ws.close()
-        // Re-fetch full run to pick up server-side finished_at and findings_count
-        api.getRun(id).then(r => { setRun(r); setSteps(r.steps || []) }).catch(() => {})
-      }
+      ws.onerror = () => { try { ws.close() } catch { /* noop */ } }
     }
-    return () => ws.close()
-  }, [run?.status, id])
+
+    connect()
+
+    // Fallback poll: guarantees the UI converges to the real status even if
+    // the WS misses the one-shot "done" event — and re-attaches the live
+    // stream when a paused/failed run is resumed.
+    const poll = setInterval(() => {
+      api.getRun(id).then(r => {
+        const wasTerminal = TERMINAL.includes(statusRef.current)
+        const isTerminal = TERMINAL.includes(r.status)
+        if (isTerminal && !wasTerminal) {
+          statusRef.current = r.status
+          setRun(r); setSteps(r.steps || [])
+          setPausing(false); setResuming(false)
+          try { ws?.close() } catch { /* noop */ }
+        } else if (!isTerminal && wasTerminal) {
+          statusRef.current = r.status
+          setRun(r); setSteps(r.steps || [])
+          connect()
+        }
+      }).catch(() => {})
+    }, 5000)
+
+    return () => {
+      disposed = true
+      clearInterval(poll)
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      try { ws?.close() } catch { /* noop */ }
+    }
+  }, [id])
 
   if (!run) return <div className="p-8 text-[#8b949e] text-sm">Loading…</div>
 

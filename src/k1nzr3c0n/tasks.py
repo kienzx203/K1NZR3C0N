@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import select
+import signal
 import subprocess
 import sys
 import time
@@ -73,6 +75,15 @@ def _recover_orphaned_runs() -> None:
         for run in stale:
             if run.celery_task_id:
                 celery_app.control.revoke(run.celery_task_id, terminate=False)
+            # Kill the orphaned process group — the runner was launched with
+            # start_new_session=True so its pgid equals its pid. Without this,
+            # a restarted worker leaves the old scan running (and blocked on a
+            # full stdout pipe nobody reads anymore).
+            if getattr(run, "pid", None):
+                try:
+                    os.killpg(run.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
             run.status = "failed"
             run.error_message = (
                 "Interrupted by a worker restart — no process was left running this scan. "
@@ -478,14 +489,49 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
             text=True,
             bufsize=1,
             env=proc_env,
+            # Own process group (pgid == pid): on cancel / worker restart we
+            # can kill the ENTIRE tree. Without this, terminating the runner
+            # leaves its scan subprocesses (spawned with start_new_session=True
+            # by workflow.py) alive as orphans until they finish on their own.
+            start_new_session=True,
         )
+        try:
+            run.pid = proc.pid  # used by _recover_orphaned_runs on worker boot
+            db.commit()
+        except Exception:
+            db.rollback()  # pid column missing on an un-migrated DB — non-fatal
 
         log_buffer: list[str] = []
         last_flush = time.monotonic()
+        last_cancel_check = time.monotonic()
         _cancelled = False
-        _line_count = 0
 
-        for raw in proc.stdout:
+        def _kill_tree() -> None:
+            """SIGTERM the whole process group, SIGKILL anything still alive."""
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                try:
+                    proc.terminate()
+                except OSError:
+                    pass
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    try:
+                        proc.kill()
+                    except OSError:
+                        pass
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+
+        def _handle_line(raw: str) -> None:
+            nonlocal last_flush
             # Split on \r BEFORE stripping ANSI (the regex also eats \r).
             # Progress bars overwrite the line with \r; keep only the last visible segment.
             line = ''
@@ -495,7 +541,7 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
                     line = candidate
                     break
             if not line:
-                continue
+                return
 
             m = _STEP_MARKER.match(line)
             if m:
@@ -506,7 +552,7 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
                 if changed_status:
                     _publish(run_id, {"type": "step", "steps": steps})
                 # markers are machine-readable only — don't save to log DB or broadcast
-                continue
+                return
 
             _publish(run_id, {"type": "log", "message": line})
             log_buffer.append(line)
@@ -515,16 +561,28 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
                 _flush_logs(db, run_id, log_buffer)
                 last_flush = now
 
-            # Check cancel flag every 10 lines to kill subprocess promptly
-            _line_count += 1
-            if _cancel_flag and _line_count % 10 == 0 and _cancel_flag.exists():
-                _cancelled = True
-                proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
+        # select()-based read loop instead of `for raw in proc.stdout:` — the
+        # blocking iterator would never return control while the subprocess is
+        # silent (long nmap/puredns phases), so the cancel flag went unchecked
+        # until the next output line. Now the flag is polled every second.
+        while True:
+            now = time.monotonic()
+            if _cancel_flag and (now - last_cancel_check) >= 1.0:
+                last_cancel_check = now
+                if _cancel_flag.exists():
+                    _cancelled = True
+                    _kill_tree()
+                    break
+            ready, _, _ = select.select([proc.stdout], [], [], 0.5)
+            if ready:
+                raw = proc.stdout.readline()
+                if not raw:  # EOF — subprocess closed stdout
+                    break
+                _handle_line(raw)
+            elif proc.poll() is not None:
+                # Process exited silently; drain any buffered lines then stop
+                for raw in proc.stdout:
+                    _handle_line(raw)
                 break
 
         proc.wait()
@@ -864,6 +922,10 @@ def workspace_cleanup() -> dict:
         "afrog.jsonl", "urls_all.txt", "urls_params.txt", "kiterunner.txt",
         "resume.json",
     ])
+    # Directories kept intact — Finding rows still reference these paths
+    # (e.g. Finding.screenshot = "screenshots/x.png") and old reports would
+    # show broken images otherwise.
+    _KEEP_DIRS = frozenset(["screenshots"])
 
     cutoff = datetime.utcnow() - timedelta(days=30)
     db = get_db()
@@ -882,9 +944,13 @@ def workspace_cleanup() -> dict:
             if not ws.exists():
                 continue
             for p in ws.rglob("*"):
-                if p.is_file() and p.name not in _KEEP:
-                    deleted_bytes += p.stat().st_size
-                    p.unlink()
+                if not p.is_file() or p.name in _KEEP:
+                    continue
+                # Keep files inside retained directories (screenshots/)
+                if any(part in _KEEP_DIRS for part in p.relative_to(ws).parts[:-1]):
+                    continue
+                deleted_bytes += p.stat().st_size
+                p.unlink()
             cleaned += 1
 
         return {"cleaned_runs": cleaned, "deleted_bytes": deleted_bytes}

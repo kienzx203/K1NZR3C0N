@@ -10,6 +10,7 @@ Tài liệu này mô tả cấu trúc file YAML dùng để định nghĩa workf
 ## Cấu trúc tổng quát
 ```yaml
 name: <tên-workflow>
+max_parallel: <số-step-song-song-tối-đa-trong-một-level>   # optional
 vars:
   <key>: <value>
 steps:
@@ -50,6 +51,18 @@ steps:
 
 ### `name` (string)
 Tên workflow. Dùng để nhận diện, không ảnh hưởng logic.
+
+### `max_parallel` (int, optional)
+Giới hạn số step chạy đồng thời trong một parallel level. Các step độc lập
+(cùng level theo topology) vẫn chạy song song, nhưng tối đa `max_parallel`
+step cùng lúc — dùng để giới hạn RAM/CPU hoặc rate limit API khi một level có
+quá nhiều step độc lập (ví dụ: phase passive enum ~30 sources).
+
+Không đặt (hoặc đặt `>= số step trong level`) = không giới hạn.
+
+```yaml
+max_parallel: 8
+```
 
 ### `vars` (mapping, optional)
 Biến dùng chung trong workflow. Có thể được override qua CLI `--vars key=value`.

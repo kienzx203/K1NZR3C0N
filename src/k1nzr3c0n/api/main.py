@@ -80,12 +80,18 @@ async def ws_run_logs(websocket: WebSocket, run_id: str):
     db = get_db()
 
     try:
+        run = db_get(db, Run, run_id)
+        if run is None:
+            # Unknown run — close instead of leaving the socket hanging open
+            # forever on a pubsub channel that will never receive messages.
+            await websocket.send_json({"type": "done", "status": "not_found", "steps": []})
+            return
+
         total_logs = db.query(RunLog).filter(RunLog.run_id == run_id).count()
         # Always send current total so client knows how many lines exist in DB
         await websocket.send_json({"type": "log_meta", "total": total_logs})
 
-        run = db_get(db, Run, run_id)
-        if run and run.status in ("completed", "failed", "cancelled", "paused"):
+        if run.status in ("completed", "failed", "cancelled", "paused"):
             await websocket.send_json({"type": "done", "status": run.status, "steps": json.loads(run.steps_json or "[]")})
             return
     finally:
@@ -94,6 +100,19 @@ async def ws_run_logs(websocket: WebSocket, run_id: str):
     redis = aioredis.from_url(REDIS_URL, decode_responses=True)
     pubsub = redis.pubsub()
     await pubsub.subscribe(f"logs:{run_id}")
+
+    # Re-check the status AFTER subscribing: if the run finished between the
+    # check above and the subscribe, the one-shot "done" publish is already
+    # gone and this socket would wait forever. Subscribe-first + re-check
+    # closes that race — anything finishing later arrives via pubsub.
+    db = get_db()
+    try:
+        run = db_get(db, Run, run_id)
+        if run and run.status in ("completed", "failed", "cancelled", "paused"):
+            await websocket.send_json({"type": "done", "status": run.status, "steps": json.loads(run.steps_json or "[]")})
+            return
+    finally:
+        db.close()
 
     try:
         async for message in pubsub.listen():

@@ -67,6 +67,10 @@ steps:
   name: merge collected URLs — filter URLs containing parameters
   depends_on:
   - collect_urls
+  # If all collection flags (run_gau/run_fallparams/run_katana) are off,
+  # collect_urls ends up 'skipped' and the engine would skip this merge step
+  # and everything downstream. The cat fallbacks tolerate missing files.
+  run_on_failed_deps: true
   shell: true
   run: '(cat {workspace}/gau_urls.txt 2>/dev/null; cat {workspace}/paramspider_urls.txt 2>/dev/null; cat {workspace}/katana_urls.txt 2>/dev/null) | sort -u > {workspace}/all_urls.txt || true; touch {workspace}/all_urls.txt; grep ''[?&][a-zA-Z0-9_%-]\+='' {workspace}/all_urls.txt 2>/dev/null | sort -u > {workspace}/urls_with_params.txt || true; touch {workspace}/urls_with_params.txt; printf ''Total URLs   : %s\nURLs w/ params: %s\n'' "$(wc -l < {workspace}/all_urls.txt)" "$(wc -l < {workspace}/urls_with_params.txt)" >> {workspace}/stats.txt'
   outputs:

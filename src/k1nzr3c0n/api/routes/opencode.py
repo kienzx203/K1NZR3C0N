@@ -49,8 +49,11 @@ def start_opencode() -> None:
         print(f"[opencode] binary not found at {launcher}", file=sys.stderr)
         return
     _proc = subprocess.Popen(
-        # Bind on 0.0.0.0 so the docker-compose port mapping 4040:4040 works
-        [launcher, "web", "--hostname", "0.0.0.0", "--port", str(OPENCODE_PORT)],
+        # Loopback only: OPENCODE_SERVER_PASSWORD is empty (no auth) and opencode
+        # is an AI agent with shell access — the old 0.0.0.0 bind made it
+        # LAN-reachable unauthenticated RCE. The UI reaches opencode through
+        # the /opencode/ proxy below, which connects to 127.0.0.1.
+        [launcher, "web", "--hostname", "127.0.0.1", "--port", str(OPENCODE_PORT)],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         env=_opencode_env(),
