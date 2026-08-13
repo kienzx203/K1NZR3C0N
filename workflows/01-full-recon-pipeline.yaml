@@ -33,11 +33,13 @@ vars:
   sub_wordlist_jhaddix: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/dns-Jhaddix.txt      # 2.17M entries
   sub_wordlist_assetnote: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/best-dns-wordlist.txt # 9.5M entries (download on first build)
   sub_wordlist_namelist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/namelist.txt         # 151k focused list
-  # Resolvers — trickest pre-validated list (12k resolvers) preferred; fallback = 6 hardcoded
+  # Resolvers — trickest pre-validated list (13k resolvers) preferred; fallback = 6 hardcoded
   resolvers_file: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/resolvers-trickest.txt
   dns_resolvers: 1.1.1.1,8.8.8.8,1.0.0.1,8.8.4.4,9.9.9.9,208.67.222.222
   dnsx_threads: '50'           # reduced from 200 — VMware NAT limit (~1000 concurrent UDP)
   dnsx_retry: '3'
+  puredns_rate: '3000'         # puredns resolve rate-limit qps — 3000 safe for VMware NAT (vs unlimited default)
+  wildcard_tests: '5'          # puredns wildcard detection rounds — 5 enough (default 3, we used 10 before)
   massdns_rate: '5000'         # reduced from 20000 — prevents VMware NAT UDP table overflow
   gotator_depth: '2'
   shuffledns_threads: '1500'   # reduced from 5000 — keeps NAT from flooding
@@ -1255,6 +1257,9 @@ steps:
   timeout: 5m
   shell: true
   run: |
+    PASSIVE=$(wc -l < {workspace}/passive_merged.txt 2>/dev/null || echo 0)
+    ACTIVE=$(cat {workspace}/a_gobuster_dns.txt {workspace}/a_shuffledns.txt {workspace}/a_puredns.txt {workspace}/a_massdns.txt 2>/dev/null | wc -l || echo 0)
+    PERM=$(cat {workspace}/perm_dnsgen.txt {workspace}/perm_alterx.txt {workspace}/perm_gotator.txt {workspace}/perm_target_words.txt 2>/dev/null | wc -l || echo 0)
     (
       cat {workspace}/passive_merged.txt      2>/dev/null || true
       cat {workspace}/p_recursive.txt         2>/dev/null || true
@@ -1275,6 +1280,8 @@ steps:
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
       | awk -v t="{target}" 'length($0)>=length(t) && substr($0,length($0)-length(t)+1)==t' \
       | sort -u > {workspace}/subdomains_all.txt
+    TOTAL=$(wc -l < {workspace}/subdomains_all.txt)
+    printf 'merge_all: passive=%s active=%s perm=%s → total_unique=%s\n' "$PASSIVE" "$ACTIVE" "$PERM" "$TOTAL"
   outputs:
     subdomains_all: '{workspace}/subdomains_all.txt'
   requires:
@@ -1293,11 +1300,15 @@ steps:
   run: |
     RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || \
       printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt && echo {workspace}/resolvers_fallback.txt)
+    CANDIDATES=$(wc -l < {steps.merge_all_subdomains.subdomains_all} 2>/dev/null || echo 0)
+    printf 'puredns: resolving %s candidates (rate-limit=%s qps, wildcard-tests=%s)...\n' "$CANDIDATES" "{vars.puredns_rate}" "{vars.wildcard_tests}"
     puredns resolve {steps.merge_all_subdomains.subdomains_all} \
       --resolvers "$RFILE" \
-      --wildcard-tests 10 \
-      --wildcard-batch 1000000 \
+      -l {vars.puredns_rate} \
+      --wildcard-tests {vars.wildcard_tests} \
       -q 2>/dev/null | sort -u > {workspace}/puredns_live.txt || true
+    touch {workspace}/puredns_live.txt
+    printf 'puredns_live: %s hosts survived wildcard filter\n' "$(wc -l < {workspace}/puredns_live.txt)"
     touch {workspace}/puredns_live.txt
   outputs:
     puredns_live: '{workspace}/puredns_live.txt'
@@ -1311,13 +1322,24 @@ steps:
   skip_if_exists: true
   retries: 1
   run: |
+    # Pass-2 input: prefer puredns-filtered list; fallback to full candidate list
     INPUT=$(test -s {workspace}/puredns_live.txt && echo {workspace}/puredns_live.txt || echo {steps.merge_all_subdomains.subdomains_all})
+    # Use resolvers_file (13k resolvers) if available, else fall back to 6 hardcoded
+    RFILE={vars.resolvers_file}
+    if test -s "$RFILE"; then
+      RFLAG="-r $RFILE"
+    else
+      RFLAG="-r {vars.dns_resolvers}"
+    fi
+    printf 'dnsx: enriching %s hosts (threads=%s, retry=%s)...\n' "$(wc -l < $INPUT)" "{vars.dnsx_threads}" "{vars.dnsx_retry}"
     # -resp outputs "host [IP1, IP2]" format — used by ip_group_analyze later
-    dnsx -l "$INPUT" -silent -r {vars.dns_resolvers} -t {vars.dnsx_threads} -retry {vars.dnsx_retry} \
-      -a -aaaa -cname -resp -o {workspace}/subdomains_resolved_resp.txt 2>/dev/null
+    dnsx -l "$INPUT" -silent $RFLAG -t {vars.dnsx_threads} -retry {vars.dnsx_retry} \
+      -a -aaaa -cname -resp -o {workspace}/subdomains_resolved_resp.txt 2>/dev/null || true
+    touch {workspace}/subdomains_resolved_resp.txt
     # Extract plain hostnames for all downstream steps
     awk '{print $1}' {workspace}/subdomains_resolved_resp.txt | sort -u > {workspace}/subdomains_resolved.txt
-    touch {workspace}/subdomains_resolved.txt {workspace}/subdomains_resolved_resp.txt
+    touch {workspace}/subdomains_resolved.txt
+    printf 'dnsx_resolved: %s live subdomains with DNS records\n' "$(wc -l < {workspace}/subdomains_resolved.txt)"
   outputs:
     resolved: '{workspace}/subdomains_resolved.txt'
     resolved_resp: '{workspace}/subdomains_resolved_resp.txt'
