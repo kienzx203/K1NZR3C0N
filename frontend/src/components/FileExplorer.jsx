@@ -43,6 +43,7 @@ const FILE_CATEGORIES = {
 function categorize(file) {
   if (file.path.startsWith('gf/') || file.path.startsWith('gf\\')) return 'gf'
   if (file.path.startsWith('screenshots/')) return 'screenshot'
+  if (file.path.startsWith('oneforall/') || file.path.startsWith('oneforall\\')) return 'subdomain'
   const stem = file.name.replace(/\.[^.]+$/, '').toLowerCase()
   for (const [cat, def] of Object.entries(FILE_CATEGORIES)) {
     if (def.names.some(n => stem === n || stem.startsWith(n + '_') || stem.startsWith(n + '.'))) return cat
@@ -162,18 +163,24 @@ export default function FileExplorer({ runId }) {
   const isDirsearch    = name === 'dirsearch.txt'
   const isSpecialText  = (isGobusterDns || isGobusterDir || isDirsearch) && ext === '.txt'
 
+  // OneForAll CSV viewer
+  const isOneForAllCsv = ext === '.csv' && (
+    (selected?.path || '').startsWith('oneforall') ||
+    content.startsWith('id,alive,request,resolve,url,subdomain')
+  )
+
   // Generic JSON pretty-print for unknown JSON with 0 findings
   const showJsonPretty = isJsonExt && !showTable && !!content
 
   const LINES_LIMIT = 500
   const lines = useMemo(() => {
-    if (!content || isMarkdown || isStats || showTable || showJsonPretty || isSpecialText || isImage) return []
+    if (!content || isMarkdown || isStats || showTable || showJsonPretty || isSpecialText || isOneForAllCsv || isImage) return []
     return content.split('\n')
-  }, [content, isMarkdown, isStats, showTable, showJsonPretty, isSpecialText, isImage])
+  }, [content, isMarkdown, isStats, showTable, showJsonPretty, isSpecialText, isOneForAllCsv, isImage])
   const displayLines = showAllLines ? lines : lines.slice(0, LINES_LIMIT)
 
   const recordLabel = isNaabu ? 'ports' : isFerox ? 'paths' : isFfuf ? 'results'
-    : isNuclei ? 'findings' : isHttpx ? 'hosts' : 'records'
+    : isNuclei ? 'findings' : isHttpx ? 'hosts' : isOneForAllCsv ? 'subdomains' : 'records'
 
   return (
     <div className="flex h-full text-xs">
@@ -230,6 +237,11 @@ export default function FileExplorer({ runId }) {
               {showTable && findings.length === 0 && (
                 <span className="text-[10px] text-[#484f58]">· 0 {recordLabel}</span>
               )}
+              {isOneForAllCsv && content && (
+                <span className="text-[10px] text-[#58a6ff]">
+                  · {Math.max(0, content.trim().split('\n').length - 1)} subdomains
+                </span>
+              )}
               {!showTable && !showJsonPretty && !isSpecialText && lines.length > 0 && (
                 <span className="text-[10px] text-[#8b949e]">· {lines.length} lines</span>
               )}
@@ -260,6 +272,10 @@ export default function FileExplorer({ runId }) {
                   : isNaabu      ? <NaabuTable findings={findings} />
                   : <GenericJsonTable findings={findings} />
                 }
+              </div>
+            ) : isOneForAllCsv ? (
+              <div className="flex-1 overflow-auto">
+                <OneForAllCsvView content={content} />
               </div>
             ) : isSpecialText ? (
               <div className="flex-1 overflow-auto">
@@ -863,4 +879,125 @@ function Row({ k, v, mono }) {
 
 function Empty({ children }) {
   return <div className="px-6 py-8 text-[#484f58] text-[11px] text-center">{children}</div>
+}
+
+/* ─── OneForAllCsvView ─────────────────────────────────────── */
+// Renders the OneForAll result CSV: id,alive,request,resolve,url,subdomain,level,
+//   cname,ip,public,cdn,port,status,reason,title,banner,cidr,asn,org,addr,isp,source
+function parseOneForAllCsv(content) {
+  const rawLines = content.trim().split('\n').filter(Boolean)
+  if (rawLines.length < 2) return { headers: [], rows: [] }
+  const headers = rawLines[0].split(',')
+  const rows = rawLines.slice(1).map(line => {
+    // CSV has quoted fields that may contain commas — do a simple state-machine parse
+    const fields = []
+    let cur = '', inQ = false
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (c === "'" && !inQ) { inQ = true; continue }
+      if (c === "'" && inQ)  { inQ = false; continue }
+      if (c === ',' && !inQ) { fields.push(cur); cur = ''; continue }
+      cur += c
+    }
+    fields.push(cur)
+    const obj = {}
+    headers.forEach((h, i) => { obj[h.trim()] = (fields[i] || '').trim() })
+    return obj
+  })
+  return { headers, rows }
+}
+
+function OneForAllCsvView({ content }) {
+  const { rows } = parseOneForAllCsv(content)
+  const [filter, setFilter] = React.useState('')
+  const [aliveOnly, setAliveOnly] = React.useState(false)
+
+  const filtered = rows.filter(r => {
+    if (aliveOnly && r.alive !== '1') return false
+    if (!filter) return true
+    const q = filter.toLowerCase()
+    return (r.subdomain || '').toLowerCase().includes(q) ||
+           (r.ip || '').includes(q) ||
+           (r.title || '').toLowerCase().includes(q) ||
+           (r.source || '').toLowerCase().includes(q)
+  })
+
+  if (!rows.length) return <Empty>No OneForAll results.</Empty>
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* toolbar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-[#21262d] bg-[#161b22] flex-shrink-0">
+        <input
+          className="bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-[11px] text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#388bfd] w-56"
+          placeholder="Filter subdomain / IP / title…"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+        />
+        <label className="flex items-center gap-1.5 text-[11px] text-[#8b949e] cursor-pointer select-none">
+          <input type="checkbox" checked={aliveOnly} onChange={e => setAliveOnly(e.target.checked)}
+            className="accent-[#58a6ff]" />
+          Alive only
+        </label>
+        <span className="ml-auto text-[10px] text-[#484f58] tabular-nums">
+          {filtered.length} / {rows.length} subdomains
+        </span>
+      </div>
+      {/* table */}
+      <div className="flex-1 overflow-auto bg-[#0d1117]">
+        <table className="w-full text-[11px] border-collapse min-w-[900px]">
+          <thead className="sticky top-0 z-10 bg-[#161b22]">
+            <tr className="border-b border-[#30363d]">
+              {['Subdomain','IP','Port','Status','CDN','Title','Source'].map(h => (
+                <th key={h} className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-[#484f58] whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r, i) => {
+              const alive = r.alive === '1'
+              const cdn   = r.cdn   === '1'
+              const sc    = parseInt(r.status) || 0
+              const color = sc >= 200 && sc < 300 ? '#3fb950'
+                          : sc >= 300 && sc < 400 ? '#d29922'
+                          : sc >= 400 && sc < 500 ? '#f85149'
+                          : sc >= 500 ? '#ff6e6e' : '#484f58'
+              return (
+                <tr key={i} className="border-b border-[#21262d] hover:bg-[#161b22]">
+                  {/* Subdomain */}
+                  <td className="px-3 py-1.5 font-mono text-[10px]">
+                    <span style={{ color: alive ? '#e6edf3' : '#484f58' }}>{r.subdomain || '—'}</span>
+                    {!alive && <span className="ml-1.5 text-[9px] text-[#484f58]">(dead)</span>}
+                  </td>
+                  {/* IP */}
+                  <td className="px-3 py-1.5 font-mono text-[10px] text-[#8b949e] whitespace-nowrap">{r.ip || '—'}</td>
+                  {/* Port */}
+                  <td className="px-3 py-1.5 text-[10px] text-[#8b949e] tabular-nums">{r.port || '—'}</td>
+                  {/* Status */}
+                  <td className="px-3 py-1.5">
+                    {sc ? (
+                      <StatusBadge code={sc} color={color} />
+                    ) : <span className="text-[#484f58] text-[10px]">—</span>}
+                  </td>
+                  {/* CDN */}
+                  <td className="px-3 py-1.5 text-[10px]">
+                    {cdn
+                      ? <span className="text-[#d29922] bg-[#d2992222] border border-[#d2992244] rounded px-1.5 py-0.5 font-mono text-[9px]">CDN</span>
+                      : <span className="text-[#484f58]">—</span>}
+                  </td>
+                  {/* Title */}
+                  <td className="px-3 py-1.5 text-[10px] text-[#8b949e] max-w-[260px] truncate" title={r.title}>{r.title || '—'}</td>
+                  {/* Source */}
+                  <td className="px-3 py-1.5 text-[10px] text-[#484f58]">{r.source || '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {!filtered.length && (
+          <div className="px-6 py-8 text-[#484f58] text-[11px] text-center">No matching subdomains.</div>
+        )}
+      </div>
+    </div>
+  )
 }
