@@ -36,15 +36,15 @@ vars:
   # Resolvers — trickest pre-validated list (12k resolvers) preferred; fallback = 6 hardcoded
   resolvers_file: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/resolvers-trickest.txt
   dns_resolvers: 1.1.1.1,8.8.8.8,1.0.0.1,8.8.4.4,9.9.9.9,208.67.222.222
-  dnsx_threads: '200'
+  dnsx_threads: '50'           # reduced from 200 — VMware NAT limit (~1000 concurrent UDP)
   dnsx_retry: '3'
-  massdns_rate: '20000'
+  massdns_rate: '5000'         # reduced from 20000 — prevents VMware NAT UDP table overflow
   gotator_depth: '2'
-  shuffledns_threads: '5000'
-  naabu_rate: '1500'
+  shuffledns_threads: '1500'   # reduced from 5000 — keeps NAT from flooding
+  naabu_rate: '500'            # reduced from 1500 — stable port scan on VMware NAT
   naabu_top_ports: '1000'
-  rustscan_batch: '5000'
-  rustscan_timeout_ms: '2000'
+  rustscan_batch: '2000'       # reduced from 5000
+  rustscan_timeout_ms: '3000'  # increased from 2000 — give NAT more time per connection
   nmap_flags: -sV -sC -Pn --open -T4 --max-retries 2
   httpx_threads: '100'
   httpx_timeout: '10'
@@ -66,11 +66,13 @@ vars:
   vhost_ip_fuzz_max_ips: '20'
   ip_pivot_prefix: '24'
   ip_pivot_max_ranges: '5'
-  scripts_dir: /app
+  scripts_dir: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}
   oneforall_cmd: python /opt/OneForAll/oneforall.py
 steps:
 - id: setup_subfinder_keys
   name: '[setup] verify subfinder + uncover provider keys (written by system before run starts)'
+  run_on_failed_deps: true
+  timeout: 2m
   shell: true
   run: |
     # NOTE: The system (tasks.py) already writes ~/.config/subfinder/provider-config.yaml
@@ -131,6 +133,15 @@ steps:
       cp /tmp/.uc_merged.yaml "$EXISTING_UC"
     fi
 
+    # ── Inject API keys into waymore config ────────────────────────────────────
+    WAYMORE_CONFIG="/root/.config/waymore/config.yml"
+    if [ -f "$WAYMORE_CONFIG" ]; then
+      US_KEY="${URLSCAN_API_KEY:-}"
+      [ -n "$US_KEY" ] && sed -i "s|^URLSCAN_API_KEY:.*|URLSCAN_API_KEY: $US_KEY|" "$WAYMORE_CONFIG" 2>/dev/null || true
+      VT_KEY="${VIRUSTOTAL_KEY:-}"
+      [ -n "$VT_KEY" ] && sed -i "s|^VIRUSTOTAL_API_KEY:.*|VIRUSTOTAL_API_KEY: $VT_KEY|" "$WAYMORE_CONFIG" 2>/dev/null || true
+    fi
+
     ACTIVE_KEYS=$(grep -c '^\w' ~/.config/subfinder/provider-config.yaml 2>/dev/null || echo 0)
     ACTIVE_UNCOVER=$(grep -c '^\w' ~/.config/uncover/provider-config.yaml 2>/dev/null || echo 0)
     printf '[setup] subfinder: %s providers | uncover: %s providers active\n' \
@@ -143,9 +154,11 @@ steps:
     file: '{workspace}/.setup_done'
 - id: p_subfinder
   name: '[passive] subfinder — cert transparency + 50 passive sources (with all /keys UI providers)'
-  when: '{vars.run_passive}'
   depends_on:
   - setup_subfinder_keys
+  run_on_failed_deps: true
+  when: '{vars.run_passive}'
+  # tasks.py writes provider-config.yaml before the run starts; no need to wait for setup_subfinder_keys
   shell: true
   optional: true
   skip_if_exists: true
@@ -160,6 +173,10 @@ steps:
     file: '{workspace}/p_subfinder.txt'
 - id: p_assetfinder
   name: '[passive] assetfinder — Facebook CT + various APIs'
+  depends_on:
+  - p_subfinder
+  run_on_failed_deps: true
+  timeout: 5m
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -169,6 +186,10 @@ steps:
     file: '{workspace}/p_assetfinder.txt'
 - id: p_findomain
   name: '[passive] findomain — certificate transparency + APIs'
+  depends_on:
+  - p_assetfinder
+  run_on_failed_deps: true
+  timeout: 5m
   when: '{vars.run_passive}'
   optional: true
   skip_if_exists: true
@@ -177,6 +198,9 @@ steps:
     file: '{workspace}/p_findomain.txt'
 - id: p_sublist3r
   name: '[passive] sublist3r — search engines (Google/Bing/Baidu/Netcraft)'
+  depends_on:
+  - p_findomain
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -187,6 +211,9 @@ steps:
     file: '{workspace}/p_sublist3r.txt'
 - id: p_amass
   name: '[passive] amass — OWASP passive multi-source'
+  depends_on:
+  - p_sublist3r
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -197,6 +224,10 @@ steps:
     file: '{workspace}/p_amass.txt'
 - id: p_chaos
   name: '[passive] chaos — ProjectDiscovery bug-bounty dataset'
+  depends_on:
+  - p_amass
+  run_on_failed_deps: true
+  timeout: 5m
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -214,6 +245,9 @@ steps:
     file: '{workspace}/p_chaos.txt'
 - id: p_oneforall
   name: '[passive] OneForAll — comprehensive 60-source aggregator'
+  depends_on:
+  - p_chaos
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -226,6 +260,8 @@ steps:
   name: '[passive] OneForAll — extract subdomains from CSV'
   depends_on:
   - p_oneforall
+  run_on_failed_deps: true
+  timeout: 5m
   shell: true
   optional: true
   run: python {vars.scripts_dir}/scripts/oneforall_extract.py --input {workspace}/oneforall --output {workspace}/p_oneforall.txt 2>/dev/null; touch {workspace}/p_oneforall.txt
@@ -233,6 +269,10 @@ steps:
     file: '{workspace}/p_oneforall.txt'
 - id: p_cero
   name: '[passive] cero — TLS certificate SAN extraction via SNI'
+  depends_on:
+  - p_oneforall_extract
+  run_on_failed_deps: true
+  timeout: 10m
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -242,6 +282,10 @@ steps:
     file: '{workspace}/p_cero.txt'
 - id: p_uncover
   name: '[passive] uncover — Shodan/Fofa/Censys/Hunter/Netlas OSINT'
+  depends_on:
+  - p_cero
+  run_on_failed_deps: true
+  timeout: 10m
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -261,7 +305,8 @@ steps:
 - id: p_uncover_org
   name: '[passive] uncover — org-name search across Shodan/FOFA/ZoomEye (finds IPs + subs under org name)'
   depends_on:
-  - setup_subfinder_keys
+  - p_uncover
+  run_on_failed_deps: true
   when: '{vars.run_passive} && {vars.run_uncover_org} && {vars.org_name}'
   shell: true
   optional: true
@@ -277,8 +322,9 @@ steps:
   name: '[passive] split org-name uncover results — in-scope (auto-merge) vs off-domain (reference)'
   depends_on:
   - p_uncover_org
-  when: '{vars.run_passive} && {vars.run_uncover_org} && {vars.org_name}'
   run_on_failed_deps: true
+  timeout: 5m
+  when: '{vars.run_passive} && {vars.run_uncover_org} && {vars.org_name}'
   shell: true
   optional: true
   run: |
@@ -300,6 +346,9 @@ steps:
     offdomain: '{workspace}/p_uncover_org_offdomain.txt'
 - id: p_waybackurls
   name: '[passive] waybackurls — extract subdomains from Wayback Machine URLs (saves full URL corpus too)'
+  depends_on:
+  - p_uncover_org_filter
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -316,13 +365,16 @@ steps:
     urls: '{workspace}/p_waybackurls_urls.txt'
 - id: p_gau
   name: '[passive] gau — extract subdomains from GAU URL archive (saves full URL corpus too)'
+  depends_on:
+  - p_waybackurls
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
   skip_if_exists: true
   timeout: 10m
   run: |
-    gau --subs {target} --threads 5 --timeout 30 2>/dev/null \
+    gau --subs {target} --threads 5 --timeout 30 --providers otx,urlscan 2>/dev/null \
       | tee {workspace}/p_gau_urls.txt \
       | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
       | sort -u > {workspace}/p_gau_subs.txt || true
@@ -332,6 +384,9 @@ steps:
     urls: '{workspace}/p_gau_urls.txt'
 - id: p_waymore
   name: '[passive] waymore — Wayback+CommonCrawl+OTX+URLScan URL archive → subdomains'
+  depends_on:
+  - p_gau
+  run_on_failed_deps: true
   when: '{vars.run_passive} && {vars.run_waymore}'
   shell: true
   optional: true
@@ -343,17 +398,23 @@ steps:
     urls: '{workspace}/p_waymore_urls.txt'
 - id: p_urlfinder
   name: '[passive] urlfinder — Wayback+AlienVault+CommonCrawl+URLScan URL archive → subdomains'
+  depends_on:
+  - p_waymore
+  run_on_failed_deps: true
   when: '{vars.run_passive} && {vars.run_waymore}'
   shell: true
   optional: true
   skip_if_exists: true
   timeout: 10m
-  run: urlfinder -d {target} -silent -o {workspace}/p_urlfinder_urls.txt 2>/dev/null || true; test -f {workspace}/p_urlfinder_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_urlfinder_urls.txt | sort -u > {workspace}/p_urlfinder_subs.txt || true; touch {workspace}/p_urlfinder_subs.txt {workspace}/p_urlfinder_urls.txt
+  run: urlfinder -d {target} -silent -es waybackarchive -o {workspace}/p_urlfinder_urls.txt 2>/dev/null || true; test -f {workspace}/p_urlfinder_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_urlfinder_urls.txt | sort -u > {workspace}/p_urlfinder_subs.txt || true; touch {workspace}/p_urlfinder_subs.txt {workspace}/p_urlfinder_urls.txt
   outputs:
     subs: '{workspace}/p_urlfinder_subs.txt'
     urls: '{workspace}/p_urlfinder_urls.txt'
 - id: p_crtsh
   name: '[passive] crt.sh — certificate transparency direct API (wildcard % + exact domain — finds multi-SAN certs)'
+  depends_on:
+  - p_urlfinder
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -373,6 +434,9 @@ steps:
     file: '{workspace}/p_crtsh.txt'
 - id: p_certspotter
   name: '[passive] certspotter — SSLMate CT log API (different dataset from crt.sh, free)'
+  depends_on:
+  - p_crtsh
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -405,6 +469,9 @@ steps:
     file: '{workspace}/p_certspotter.txt'
 - id: p_hackertarget
   name: '[passive] hackertarget — free DNS lookup API (no key required)'
+  depends_on:
+  - p_certspotter
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -418,6 +485,9 @@ steps:
     file: '{workspace}/p_hackertarget.txt'
 - id: p_alienvault
   name: '[passive] alienvault OTX — passive DNS + URL intel → subdomains'
+  depends_on:
+  - p_hackertarget
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -439,6 +509,9 @@ steps:
     file: '{workspace}/p_alienvault.txt'
 - id: p_rapiddns
   name: '[passive] rapiddns — fast passive DNS lookup (no key required)'
+  depends_on:
+  - p_alienvault
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -453,13 +526,16 @@ steps:
     file: '{workspace}/p_rapiddns.txt'
 - id: p_gauplus
   name: '[passive] gauplus — extended URL archive (Wayback+OTX+VirusTotal+URLScan+more) → subdomains'
+  depends_on:
+  - p_rapiddns
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
   skip_if_exists: true
   timeout: 10m
   run: |
-    gauplus --subs {target} -t 10 --timeout 30 2>/dev/null \
+    gauplus --subs {target} -t 10 --timeout 30 -providers otx,urlscan 2>/dev/null \
       | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
       | sort -u > {workspace}/p_gauplus_subs.txt || true
     touch {workspace}/p_gauplus_subs.txt
@@ -467,6 +543,9 @@ steps:
     file: '{workspace}/p_gauplus_subs.txt'
 - id: p_urlscan
   name: '[passive] urlscan.io — global scan index (finds subs from security researcher scans)'
+  depends_on:
+  - p_gauplus
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -503,6 +582,9 @@ steps:
     file: '{workspace}/p_urlscan.txt'
 - id: p_github_code
   name: '[passive] github code search — find hardcoded subdomains in public repos (uses GITHUB_TOKEN)'
+  depends_on:
+  - p_urlscan
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -538,16 +620,14 @@ steps:
     file: '{workspace}/p_github_code.txt'
 - id: p_securitytrails
   name: '[passive] securitytrails API — historical passive DNS'
+  depends_on:
+  - p_github_code
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
   timeout: 5m
-  # Run after subfinder/gau/waymore finish — they saturate the network
-  # during the first 60-120s of the workflow, causing SecurityTrails TLS timeouts.
-  depends_on:
-    - p_subfinder
-    - p_gau
-    - p_waymore
+  # Runs in parallel with other passive tools (no network saturation on bare-metal)
   run: |
     ST_KEY="${SECURITYTRAILS_KEY:-}"
     [ -z "$ST_KEY" ] && echo "[securitytrails] no key — skipping" && touch {workspace}/p_securitytrails.txt && exit 0
@@ -559,6 +639,9 @@ steps:
     file: '{workspace}/p_securitytrails.txt'
 - id: p_virustotal
   name: '[passive] virustotal passive DNS — huge historical dataset (needs VIRUSTOTAL_KEY)'
+  depends_on:
+  - p_securitytrails
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -584,6 +667,9 @@ steps:
     file: '{workspace}/p_virustotal.txt'
 - id: p_bevigil
   name: '[passive] bevigil — mobile app (APK/IPA) subdomain recon (needs BEVIGIL_KEY)'
+  depends_on:
+  - p_virustotal
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -603,6 +689,9 @@ steps:
     file: '{workspace}/p_bevigil.txt'
 - id: p_shosubgo
   name: '[passive] shosubgo — Shodan subdomain database (needs SHODAN_API_KEY)'
+  depends_on:
+  - p_bevigil
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -631,6 +720,9 @@ steps:
     file: '{workspace}/p_shosubgo.txt'
 - id: p_threatcrowd
   name: '[passive] threatcrowd + dnstable — threat intel passive DNS (free)'
+  depends_on:
+  - p_shosubgo
+  run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
@@ -653,6 +745,9 @@ steps:
     file: '{workspace}/p_threatcrowd.txt'
 - id: p_amass_active
   name: '[active] amass enum active — DNS brute + AXFR + reverse + cert (slow, thorough)'
+  depends_on:
+  - p_threatcrowd
+  run_on_failed_deps: true
   when: '{vars.run_amass_active}'
   shell: true
   optional: true
@@ -667,6 +762,9 @@ steps:
     file: '{workspace}/p_amass_active.txt'
 - id: axfr_check
   name: '[active] AXFR zone transfer — attempt on all authoritative NS records'
+  depends_on:
+  - p_amass_active
+  run_on_failed_deps: true
   when: '{vars.run_axfr}'
   shell: true
   optional: true
@@ -694,36 +792,9 @@ steps:
 - id: merge_passive
   name: merge all passive sources → deduplicate + scope-filter
   depends_on:
-  - p_subfinder
-  - p_assetfinder
-  - p_findomain
-  - p_sublist3r
-  - p_amass
-  - p_chaos
-  - p_oneforall_extract
-  - p_cero
-  - p_uncover
-  - p_waybackurls
-  - p_gau
-  - p_waymore
-  - p_urlfinder
-  - p_crtsh
-  - p_certspotter
-  - p_hackertarget
-  - p_alienvault
-  - p_rapiddns
-  - p_gauplus
-  - p_urlscan
-  - p_github_code
-  - p_securitytrails
-  - p_virustotal
-  - p_bevigil
-  - p_shosubgo
-  - p_threatcrowd
-  - p_amass_active
   - axfr_check
-  - p_uncover_org_filter
   run_on_failed_deps: true
+  timeout: 5m
   shell: true
   run: |
     (
@@ -774,6 +845,7 @@ steps:
   name: '[passive] recursive subfinder — enumerate sub-subdomains of wildcard/broad hosts'
   depends_on:
   - merge_passive
+  run_on_failed_deps: true
   when: '{vars.run_recursive}'
   shell: true
   optional: true
@@ -801,6 +873,9 @@ steps:
     file: '{workspace}/p_recursive.txt'
 - id: asn_discover
   name: '[ASN] metabigor — discover IP/CIDR ranges for org (local ASN DB, no API key)'
+  depends_on:
+  - recursive_enum
+  run_on_failed_deps: true
   when: '{vars.run_asn}'
   shell: true
   optional: true
@@ -811,6 +886,9 @@ steps:
     ipv4_cidrs: '{workspace}/asn_ipv4_cidrs.txt'
 - id: amass_intel
   name: '[ASN] amass intel — org/WHOIS-based ASN discovery (amass v4 only; v5 uses metabigor)'
+  depends_on:
+  - asn_discover
+  run_on_failed_deps: true
   when: '{vars.run_asn} && {vars.run_amass_intel} && {vars.org_name}'
   shell: true
   optional: true
@@ -834,6 +912,8 @@ steps:
   name: '[ASN] extract CIDR ranges from amass intel output'
   depends_on:
   - amass_intel
+  run_on_failed_deps: true
+  timeout: 5m
   shell: true
   optional: true
   run: |
@@ -846,7 +926,8 @@ steps:
 - id: reverse_dns_asn
   name: '[ASN] hakrevdns — reverse DNS on ASN IP ranges → hidden subdomains not in CT'
   depends_on:
-  - asn_discover
+  - amass_intel_extract
+  run_on_failed_deps: true
   when: '{vars.run_asn} && {vars.run_revdns}'
   shell: true
   optional: true
@@ -873,10 +954,14 @@ steps:
   outputs:
     file: '{workspace}/reverse_dns_subs.txt'
 - id: active_dns_brute
-  name: active DNS bruteforce — gobuster + shuffledns + puredns + massdns (parallel)
+  name: active DNS bruteforce — gobuster + shuffledns + puredns + massdns (sequential, VMware NAT safe)
+  depends_on:
+  - reverse_dns_asn
+  run_on_failed_deps: true
+  timeout: 60m
   when: '{vars.run_active_dns}'
   optional: true
-  fanout_concurrency: 4
+  fanout_concurrency: 1
   fanout_timeout_default: 40m
   fanout:
   - id: gobuster_dns
@@ -952,12 +1037,14 @@ steps:
       file: '{workspace}/a_massdns.txt'
     optional: true
 - id: permutation_dns
-  name: DNS permutation — dnsgen + alterx + gotator → resolve with dnsx/shuffledns
+  name: DNS permutation — dnsgen + alterx + gotator → resolve with dnsx/shuffledns (sequential)
   depends_on:
-  - merge_passive
+  - active_dns_brute
+  run_on_failed_deps: true
+  timeout: 60m
   when: '{vars.run_permutation}'
   optional: true
-  fanout_concurrency: 3
+  fanout_concurrency: 1
   fanout_timeout_default: 20m
   fanout:
   - id: dnsgen_resolve
@@ -968,7 +1055,7 @@ steps:
       printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n' > {workspace}/resolvers.txt 2>/dev/null || true
       if test -s {workspace}/passive_merged.txt; then
         head -300 {workspace}/passive_merged.txt | dnsgen - 2>/dev/null \
-          | shuffledns -d {target} -r {workspace}/resolvers.txt -t 3000 -mode resolve -silent 2>/dev/null \
+          | shuffledns -d {target} -r {workspace}/resolvers.txt -t {vars.shuffledns_threads} -mode resolve -silent 2>/dev/null \
           | sort -u > {workspace}/perm_dnsgen.txt || true
       fi
       touch {workspace}/perm_dnsgen.txt
@@ -1002,7 +1089,7 @@ steps:
           -mindup -t 200 -silent 2>/dev/null \
           | grep -E "\.{target}$" \
           | shuffledns -d {target} -r {workspace}/resolvers.txt \
-              -t 3000 -mode resolve -silent 2>/dev/null \
+              -t {vars.shuffledns_threads} -mode resolve -silent 2>/dev/null \
           | sort -u > {workspace}/perm_gotator.txt || true
       fi
       touch {workspace}/perm_gotator.txt
@@ -1153,13 +1240,9 @@ steps:
 - id: merge_all_subdomains
   name: merge passive + active + permutation + revdns + recursive + amass intel → final candidate list
   depends_on:
-  - merge_passive
-  - active_dns_brute
   - permutation_dns
-  - reverse_dns_asn
-  - recursive_enum
-  - amass_intel_extract
   run_on_failed_deps: true
+  timeout: 5m
   shell: true
   run: |
     (
@@ -1191,12 +1274,12 @@ steps:
   name: DNS resolve pass-1 — puredns mass-resolve + wildcard filter (massdns engine)
   depends_on:
   - merge_all_subdomains
+  run_on_failed_deps: true
   shell: true
   optional: true
   skip_if_exists: true
   retries: 1
   timeout: 30m
-  shell: true
   run: |
     RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || \
       printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt && echo {workspace}/resolvers_fallback.txt)
@@ -1208,12 +1291,12 @@ steps:
     touch {workspace}/puredns_live.txt
   outputs:
     puredns_live: '{workspace}/puredns_live.txt'
-  _phase: resolve
 - id: dnsx_resolve
   name: DNS resolve pass-2 — dnsx enrich live hosts with A/AAAA/CNAME records
   depends_on:
   - puredns_resolve
-  - merge_all_subdomains
+  run_on_failed_deps: true
+  timeout: 30m
   shell: true
   skip_if_exists: true
   retries: 1
@@ -1235,6 +1318,8 @@ steps:
   name: '[IP] group resolved hosts by IP — shared-hosting detection + origin IP list'
   depends_on:
   - dnsx_resolve
+  run_on_failed_deps: true
+  timeout: 5m
   shell: true
   optional: true
   run: |
@@ -1255,7 +1340,8 @@ steps:
 - id: ptr_scan_dns
   name: '[PTR] reverse DNS on resolved IPs — find hosts hidden from CT/passive sources'
   depends_on:
-  - dnsx_resolve
+  - ip_group_analyze
+  run_on_failed_deps: true
   when: '{vars.run_ptr_scan}'
   shell: true
   optional: true
@@ -1300,7 +1386,8 @@ steps:
 - id: dns_record_enum
   name: DNS record enrichment — SRV/MX/NS/TXT on resolved hosts → find additional infra hosts
   depends_on:
-  - dnsx_resolve
+  - ptr_scan_dns
+  run_on_failed_deps: true
   when: '{vars.run_dns_records}'
   shell: true
   optional: true
@@ -1339,12 +1426,9 @@ steps:
 - id: resolve_stats
   name: resolution stats — count passive vs active vs puredns vs dnsx resolved
   depends_on:
-  - merge_all_subdomains
-  - puredns_resolve
-  - dnsx_resolve
-  - ptr_scan_dns
   - dns_record_enum
   run_on_failed_deps: true
+  timeout: 3m
   shell: true
   run: |
     printf 'Passive unique: %s\nAll candidates: %s\npuredns live (wildcard-filtered): %s\ndnsx resolved (A/AAAA/CNAME): %s\nPTR new subs: %s\n' \
@@ -1360,7 +1444,8 @@ steps:
 - id: tlsx_san_mine
   name: '[TLS] tlsx — scan live hosts for certificates, extract SAN entries'
   depends_on:
-  - dnsx_resolve
+  - resolve_stats
+  run_on_failed_deps: true
   when: '{vars.run_tlsx}'
   shell: true
   optional: true
@@ -1379,6 +1464,8 @@ steps:
   name: '[TLS] extract new in-scope subdomains from TLS SAN entries'
   depends_on:
   - tlsx_san_mine
+  run_on_failed_deps: true
+  timeout: 5m
   when: '{vars.run_tlsx}'
   shell: true
   optional: true
@@ -1402,6 +1489,8 @@ steps:
   name: '[TLS] DNS resolve TLS-discovered subdomains → enrich host list'
   depends_on:
   - tlsx_san_extract
+  run_on_failed_deps: true
+  timeout: 20m
   when: '{vars.run_tlsx}'
   shell: true
   optional: true
@@ -1418,11 +1507,9 @@ steps:
 - id: merge_all_resolved
   name: merge DNS resolved + TLS SAN + PTR + DNS records → comprehensive host list
   depends_on:
-  - dnsx_resolve
   - dnsx_san_resolve
-  - ptr_scan_dns
-  - dns_record_enum
   run_on_failed_deps: true
+  timeout: 5m
   shell: true
   run: |
     (
@@ -1442,6 +1529,7 @@ steps:
   name: port scan top-1000 — naabu (fast sweep all live hosts incl. TLS-discovered)
   depends_on:
   - merge_all_resolved
+  run_on_failed_deps: true
   when: '{vars.run_portscan}'
   optional: true
   skip_if_exists: true
@@ -1452,7 +1540,8 @@ steps:
 - id: naabu_asn_scan
   name: port scan ASN IP ranges — naabu on organization CIDR ranges
   depends_on:
-  - asn_discover
+  - naabu_topscan
+  run_on_failed_deps: true
   when: '{vars.run_asn} && {vars.run_asn_portscan}'
   optional: true
   skip_if_exists: true
@@ -1486,10 +1575,12 @@ steps:
 - id: deep_portscan
   name: deep port scan — rustscan full range + nmap service detection
   depends_on:
-  - merge_all_resolved
+  - naabu_asn_scan
+  run_on_failed_deps: true
+  timeout: 2h
   when: '{vars.run_deep_portscan}'
   optional: true
-  fanout_concurrency: 2
+  fanout_concurrency: 1
   fanout_timeout_default: 4h
   fanout:
   - id: rustscan_full
@@ -1507,9 +1598,9 @@ steps:
 - id: extract_web_targets
   name: extract web targets — resolved hosts + naabu web ports (80/443/8x)
   depends_on:
-  - merge_all_resolved
-  - naabu_topscan
+  - deep_portscan
   run_on_failed_deps: true
+  timeout: 5m
   shell: true
   run: |
     (
@@ -1527,6 +1618,8 @@ steps:
   name: HTTP probe — title / tech-detect / status / redirect chain
   depends_on:
   - extract_web_targets
+  run_on_failed_deps: true
+  timeout: 60m
   skip_if_exists: true
   run: httpx -l {steps.extract_web_targets.web_targets} -silent -json -o {workspace}/httpx.jsonl -td -title -status-code -content-length -follow-redirects -timeout {vars.httpx_timeout} -threads {vars.httpx_threads} -random-agent
   outputs:
@@ -1539,6 +1632,8 @@ steps:
   name: extract live URLs from httpx → for crawl + vuln scan input
   depends_on:
   - httpx
+  run_on_failed_deps: true
+  timeout: 3m
   shell: true
   run: jq -r '.url // empty' {workspace}/httpx.jsonl 2>/dev/null | sort -u > {workspace}/live_urls.txt; touch {workspace}/live_urls.txt
   outputs:
@@ -1547,6 +1642,7 @@ steps:
   name: '[favicon] compute mmh3 favicon hash per live host (Shodan/FOFA http.favicon.hash compatible)'
   depends_on:
   - extract_live_urls
+  run_on_failed_deps: true
   shell: true
   optional: true
   skip_if_exists: true
@@ -1566,6 +1662,7 @@ steps:
   name: '[favicon] uncover — search Shodan/FOFA for hosts sharing target favicon hash'
   depends_on:
   - favicon_hash
+  run_on_failed_deps: true
   when: '{vars.run_favicon_pivot}'
   shell: true
   optional: true
@@ -1589,8 +1686,9 @@ steps:
   name: '[favicon] split results — in-scope (new subs) vs off-domain (different org assets)'
   depends_on:
   - favicon_pivot_search
-  when: '{vars.run_favicon_pivot}'
   run_on_failed_deps: true
+  timeout: 5m
+  when: '{vars.run_favicon_pivot}'
   shell: true
   optional: true
   run: |
@@ -1614,6 +1712,7 @@ steps:
   name: '[vhost] ffuf Host-header fuzz non-CDN IPs — discovers virtualhost subs without DNS records'
   depends_on:
   - origin_ips_extract
+  run_on_failed_deps: true
   when: '{vars.run_vhost_ip_fuzz}'
   shell: true
   optional: true
@@ -1638,10 +1737,12 @@ steps:
 - id: vhost_ssl_san
   name: '[vhost] SSL cert SAN extraction per non-CDN IP — cheap vhost hint (no fuzzing needed)'
   depends_on:
-  - origin_ips_extract
+  - vhost_ip_fuzz
+  run_on_failed_deps: true
   when: '{vars.run_vhost_ip_fuzz}'
   shell: true
   optional: true
+  skip_if_exists: true
   timeout: 20m
   run: |
     touch {workspace}/vhost_ssl_san_hits.txt
@@ -1658,10 +1759,10 @@ steps:
 - id: vhost_findings_merge
   name: '[vhost] merge ffuf + SSL-SAN → new hosts not yet in resolved list'
   depends_on:
-  - vhost_ip_fuzz
   - vhost_ssl_san
-  when: '{vars.run_vhost_ip_fuzz}'
   run_on_failed_deps: true
+  timeout: 5m
+  when: '{vars.run_vhost_ip_fuzz}'
   shell: true
   run: |
     touch {workspace}/vhost_new_hosts.txt
@@ -1679,11 +1780,9 @@ steps:
 - id: ip_pivot_reverse
   name: '[IP-pivot] mapcidr expand + dnsx PTR reverse sweep neighboring /24 blocks'
   depends_on:
-  - origin_ips_extract
-  - amass_intel_extract
-  - asn_discover
-  when: '{vars.run_ip_pivot}'
+  - vhost_findings_merge
   run_on_failed_deps: true
+  when: '{vars.run_ip_pivot}'
   shell: true
   optional: true
   timeout: 1h
@@ -1715,8 +1814,9 @@ steps:
   name: '[IP-pivot] split PTR results — in-scope new hosts vs neighbor domains (manual review)'
   depends_on:
   - ip_pivot_reverse
-  when: '{vars.run_ip_pivot}'
   run_on_failed_deps: true
+  timeout: 5m
+  when: '{vars.run_ip_pivot}'
   shell: true
   optional: true
   run: |
@@ -1739,10 +1839,9 @@ steps:
 - id: pivot_new_hosts_merge
   name: merge all pivot-discovered hosts (favicon + vhost + ip_pivot) → resolve new ones
   depends_on:
-  - favicon_pivot_filter
-  - vhost_findings_merge
   - ip_pivot_filter
   run_on_failed_deps: true
+  timeout: 5m
   shell: true
   run: |
     (
@@ -1760,6 +1859,8 @@ steps:
   name: resolve pivot-discovered new hosts (bonus coverage on top of main resolved set)
   depends_on:
   - pivot_new_hosts_merge
+  run_on_failed_deps: true
+  timeout: 20m
   shell: true
   optional: true
   run: |
@@ -1779,8 +1880,9 @@ steps:
 - id: http_redirect_subs
   name: mine HTTP redirect Location headers for new in-scope subdomains
   depends_on:
-  - httpx
-  - extract_live_urls
+  - favicon_pivot_filter
+  run_on_failed_deps: true
+  timeout: 10m
   shell: true
   optional: true
   run: |
@@ -1815,8 +1917,8 @@ steps:
 - id: cdncheck_classify
   name: '[CDN] cdncheck — classify live hosts as CDN vs origin (prioritize non-CDN)'
   depends_on:
-  - merge_all_resolved
-  - httpx
+  - http_redirect_subs
+  run_on_failed_deps: true
   when: '{vars.run_cdncheck}'
   shell: true
   optional: true
@@ -1840,7 +1942,8 @@ steps:
   name: '[IP] extract IPs for non-CDN (origin) hosts — safe base for vhost fuzz / ip pivot'
   depends_on:
   - cdncheck_classify
-  - ip_group_analyze
+  run_on_failed_deps: true
+  timeout: 5m
   shell: true
   optional: true
   run: |
@@ -1857,7 +1960,9 @@ steps:
 - id: screenshot
   name: headless screenshots — gowitness (all live HTTP endpoints)
   depends_on:
-  - extract_live_urls
+  - pivot_dnsx_resolve
+  run_on_failed_deps: true
+  timeout: 30m
   when: '{vars.run_screenshot}'
   shell: true
   optional: true
@@ -1869,7 +1974,7 @@ steps:
       -s {workspace}/screenshots \
       --write-db \
       --write-db-uri sqlite://{workspace}/gowitness.sqlite3 \
-      --chrome-path /usr/local/bin/chromium-server \
+      --chrome-path /usr/bin/chromium \
       -T 30 --threads {vars.screenshot_threads} -q 2>{workspace}/gowitness.log || true
     cd {workspace} && gowitness report generate \
       --db-uri sqlite://{workspace}/gowitness.sqlite3 -q 2>/dev/null || true
@@ -1879,10 +1984,12 @@ steps:
 - id: url_collect
   name: URL collection — katana JS-aware crawl + hakrawler (parallel; gau/wayback already ran in passive phase)
   depends_on:
-  - extract_live_urls
+  - screenshot
+  run_on_failed_deps: true
+  timeout: 60m
   when: '{vars.run_crawl}'
   optional: true
-  fanout_concurrency: 2
+  fanout_concurrency: 1
   fanout_timeout_default: 30m
   fanout:
   - id: katana_crawl
@@ -1918,9 +2025,9 @@ steps:
   name: merge all crawled URLs → deduplicated in-scope URL list
   depends_on:
   - url_collect
-  - extract_live_urls
-  when: '{vars.run_crawl}'
   run_on_failed_deps: true
+  timeout: 5m
+  when: '{vars.run_crawl}'
   shell: true
   run: "(\n  cat {workspace}/live_urls.txt 2>/dev/null || true;\n  cat {workspace}/katana_urls.txt 2>/dev/null || true;\n  cat {workspace}/hakrawler_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_gau_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waybackurls_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waymore_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_urlfinder_urls.txt 2>/dev/null || true\n) | grep -E '^https?://' | awk -v t=\"{target}\" 'tolower($0) ~ tolower(t)' | sort -u > {workspace}/all_urls.txt; printf 'Total unique URLs collected: %s\\n' \"$(wc -l < {workspace}/all_urls.txt)\" >> {workspace}/resolve_stats.txt || true; touch {workspace}/all_urls.txt"
   outputs:
@@ -1929,6 +2036,7 @@ steps:
   name: '[JS] subjs — collect JS file URLs from crawled pages'
   depends_on:
   - merge_crawl_urls
+  run_on_failed_deps: true
   when: '{vars.run_js_analysis}'
   shell: true
   optional: true
@@ -1941,18 +2049,20 @@ steps:
   name: '[JS] jsapiscan — extract API endpoints from collected JS files'
   depends_on:
   - subjs_extract
+  run_on_failed_deps: true
   when: '{vars.run_js_analysis}'
   shell: true
   optional: true
   skip_if_exists: true
   timeout: 20m
-  run: 'test -s {workspace}/js_urls.txt && mkdir -p {workspace}/jsapiscan_out && cd {workspace}/jsapiscan_out && jsapiscan -f {workspace}/js_urls.txt -o {workspace}/jsapiscan_results.txt -K -t 20 -d 2 2>/dev/null || true; touch {workspace}/jsapiscan_results.txt; printf ''JS API endpoints found: %s\n'' "$(wc -l < {workspace}/jsapiscan_results.txt 2>/dev/null || echo 0)" >> {workspace}/resolve_stats.txt || true'
+  run: 'test -s {workspace}/js_urls.txt && mkdir -p {workspace}/jsapiscan_out && cd {workspace}/jsapiscan_out && jsapiscan -f {workspace}/js_urls.txt -op {workspace}/jsapiscan_results.txt -o txt -K -t 20 -d 2 2>/dev/null || true; touch {workspace}/jsapiscan_results.txt; printf ''JS API endpoints found: %s\n'' "$(wc -l < {workspace}/jsapiscan_results.txt 2>/dev/null || echo 0)" >> {workspace}/resolve_stats.txt || true'
   outputs:
     file: '{workspace}/jsapiscan_results.txt'
 - id: jsubfinder_scan
   name: '[JS] jsubfinder — crawl target JS for hidden subdomains + secrets'
   depends_on:
-  - extract_live_urls
+  - jsapiscan_scan
+  run_on_failed_deps: true
   when: '{vars.run_js_analysis}'
   shell: true
   optional: true
@@ -1974,9 +2084,9 @@ steps:
 - id: js_subdomain_extract
   name: '[JS] extract new subdomains from JS analysis + crawl corpus (jsapiscan, jsubfinder, hakrawler)'
   depends_on:
-  - subjs_extract
-  - jsapiscan_scan
   - jsubfinder_scan
+  run_on_failed_deps: true
+  timeout: 5m
   when: '{vars.run_js_analysis}'
   shell: true
   optional: true
@@ -2001,10 +2111,12 @@ steps:
 - id: takeover_check
   name: subdomain takeover — subzy + subjack + dnstake (parallel)
   depends_on:
-  - merge_all_resolved
+  - js_subdomain_extract
+  run_on_failed_deps: true
+  timeout: 30m
   when: '{vars.run_takeover}'
   optional: true
-  fanout_concurrency: 3
+  fanout_concurrency: 1
   fanout_timeout_default: 20m
   fanout:
   - id: subzy
@@ -2021,7 +2133,7 @@ steps:
     optional: true
   - id: dnstake
     shell: true
-    run: dnstake -f {workspace}/subdomains_all_resolved.txt -o {workspace}/takeover_dnstake.txt 2>/dev/null; touch {workspace}/takeover_dnstake.txt
+    run: dnstake -t {workspace}/subdomains_all_resolved.txt -o {workspace}/takeover_dnstake.txt 2>/dev/null; touch {workspace}/takeover_dnstake.txt
     outputs:
       file: '{workspace}/takeover_dnstake.txt'
     optional: true
@@ -2029,8 +2141,9 @@ steps:
   name: merge takeover findings → filter VULNERABLE entries
   depends_on:
   - takeover_check
-  when: '{vars.run_takeover}'
   run_on_failed_deps: true
+  timeout: 5m
+  when: '{vars.run_takeover}'
   shell: true
   run: |
     (
@@ -2048,7 +2161,8 @@ steps:
 - id: s3scanner_buckets
   name: '[cloud] s3scanner — enumerate exposed S3/GCS/Azure cloud storage buckets'
   depends_on:
-  - dnsx_resolve
+  - merge_takeover
+  run_on_failed_deps: true
   when: '{vars.run_s3scan}'
   shell: true
   optional: true
@@ -2060,19 +2174,21 @@ steps:
 - id: nuclei_hosts
   name: nuclei — live HTTP hosts (full template set, skip dns)
   depends_on:
-  - httpx
+  - s3scanner_buckets
+  run_on_failed_deps: true
   when: '{vars.run_nuclei}'
   shell: true
   optional: true
   skip_if_exists: true
   timeout: 3h
-  run: nuclei -l {workspace}/httpx.jsonl -nmhe -jsonl -silent -rl {vars.nuclei_rl} -c {vars.nuclei_concurrency} -timeout {vars.nuclei_timeout} -etags dns -o {workspace}/nuclei_hosts.jsonl 2>/dev/null; touch {workspace}/nuclei_hosts.jsonl
+  run: nuclei -l {workspace}/httpx.jsonl -im jsonl -nmhe -jsonl -silent -rl {vars.nuclei_rl} -c {vars.nuclei_concurrency} -timeout {vars.nuclei_timeout} -etags dns -o {workspace}/nuclei_hosts.jsonl 2>/dev/null; touch {workspace}/nuclei_hosts.jsonl
   outputs:
     nuclei_jsonl: '{workspace}/nuclei_hosts.jsonl'
 - id: nuclei_misconfig
   name: nuclei — misconfigurations + exposures on all resolved hosts
   depends_on:
-  - merge_all_resolved
+  - nuclei_hosts
+  run_on_failed_deps: true
   when: '{vars.run_nuclei}'
   shell: true
   optional: true
@@ -2084,19 +2200,26 @@ steps:
 - id: afrog_scan
   name: afrog — PoC-based vuln scan (complements nuclei)
   depends_on:
-  - httpx
+  - nuclei_misconfig
+  run_on_failed_deps: true
   when: '{vars.run_afrog}'
   shell: true
   optional: true
   skip_if_exists: true
   timeout: 2h
-  run: afrog -l {workspace}/httpx.jsonl -severity critical,high,medium -json-output {workspace}/afrog.jsonl 2>/dev/null; touch {workspace}/afrog.jsonl
+  run: |
+    touch {workspace}/afrog.jsonl
+    test -s {workspace}/live_urls.txt || exit 0
+    afrog -T {workspace}/live_urls.txt -S critical,high,medium \
+      -j {workspace}/afrog.jsonl -silent 2>/dev/null || true
+    touch {workspace}/afrog.jsonl
   outputs:
     afrog_jsonl: '{workspace}/afrog.jsonl'
 - id: nuclei_naabu_ports
   name: nuclei — non-HTTP ports discovered by naabu (network templates)
   depends_on:
-  - naabu_topscan
+  - afrog_scan
+  run_on_failed_deps: true
   when: '{vars.run_nuclei} && {vars.run_portscan}'
   shell: true
   optional: true
@@ -2118,49 +2241,132 @@ steps:
 - id: final_report
   name: generate final recon summary report
   depends_on:
-  - resolve_stats
-  - merge_all_resolved
-  - asn_discover
-  - reverse_dns_asn
-  - ptr_scan_dns
-  - axfr_check
-  - http_redirect_subs
-  - tlsx_san_mine
-  - cdncheck_classify
-  - ip_group_analyze
-  - favicon_hash
-  - favicon_pivot_filter
-  - vhost_findings_merge
-  - ip_pivot_filter
-  - pivot_dnsx_resolve
-  - merge_crawl_urls
-  - subjs_extract
-  - jsapiscan_scan
-  - takeover_check
-  - s3scanner_buckets
-  - nuclei_hosts
-  - nuclei_misconfig
-  - afrog_scan
   - nuclei_naabu_ports
-  - screenshot
   run_on_failed_deps: true
+  timeout: 10m
   shell: true
-  run: 'mkdir -p {workspace}/report;
+  run: |
+    mkdir -p {workspace}/report
 
-    PASSIVE=$(wc -l < {workspace}/passive_merged.txt               2>/dev/null || echo 0); CANDIDATES=$(wc -l < {workspace}/subdomains_all.txt             2>/dev/null || echo 0); RESOLVED=$(wc -l < {workspace}/subdomains_resolved.txt          2>/dev/null || echo 0); TLSX_NEW=$(wc -l < {workspace}/tlsx_new_subs.txt                2>/dev/null || echo 0); TLSX_RESOLVED=$(wc -l < {workspace}/subdomains_tlsx_resolved.txt 2>/dev/null || echo 0); TOTAL_RESOLVED=$(wc -l < {workspace}/subdomains_all_resolved.txt 2>/dev/null || echo 0); LIVE_HTTP=$(wc -l < {workspace}/live_urls.txt                    2>/dev/null || echo 0); OPEN_PORTS=$(test -f {workspace}/naabu.jsonl && jq -r ''"\(.host):\(.port)"'' {workspace}/naabu.jsonl 2>/dev/null | sort -u | wc -l || echo 0); ASN_CIDRS=$(wc -l < {workspace}/asn_ipv4_cidrs.txt              2>/dev/null || echo 0); REVDNS_SUBS=$(wc -l < {workspace}/reverse_dns_subs.txt          2>/dev/null || echo 0); AXFR_SUBS=$(wc -l < {workspace}/axfr_subs.txt                   2>/dev/null || echo 0); PERM_GOTATOR=$(wc -l < {workspace}/perm_gotator.txt             2>/dev/null || echo 0); MASSDNS_SUBS=$(wc -l < {workspace}/a_massdns.txt                2>/dev/null || echo 0); CDN_HOSTS=$(jq -r ''select(.cdn==true)  | .host'' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0); ORIGIN_HOSTS=$(jq -r ''select(.cdn != true and .waf != true and .cloud != true) | .input'' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0); SHARED_HOSTING_IPS=$(wc -l < {workspace}/ip_groups/shared_hosting.txt 2>/dev/null || echo 0); FAVICON_RELATED=$(wc -l < {workspace}/favicon_related_offdomain.txt 2>/dev/null || echo 0); FAVICON_INSCOPE=$(wc -l < {workspace}/favicon_in_scope.txt      2>/dev/null || echo 0); VHOST_NEW=$(wc -l < {workspace}/vhost_new_hosts.txt             2>/dev/null || echo 0); IP_PIVOT_INSCOPE=$(wc -l < {workspace}/ip_pivot_in_scope.txt   2>/dev/null || echo 0); IP_PIVOT_NEIGHBORS=$(wc -l < {workspace}/ip_pivot_neighbors.txt 2>/dev/null || echo 0); PIVOT_NEW=$(wc -l < {workspace}/pivot_new_resolved.txt         2>/dev/null || echo 0); URLS=$(wc -l < {workspace}/all_urls.txt                          2>/dev/null || echo 0); JS_FILES=$(wc -l < {workspace}/js_urls.txt                       2>/dev/null || echo 0); JS_APIS=$(wc -l < {workspace}/jsapiscan_results.txt              2>/dev/null || echo 0); JS_SUBS=$(wc -l < {workspace}/js_subs.txt                        2>/dev/null || echo 0); NUCLEI_CRIT=$(jq -r ''select(.info.severity=="critical") | .host'' {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0); NUCLEI_HIGH=$(jq -r ''select(.info.severity=="high")     | .host'' {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0); NUCLEI_MED=$(jq -r  ''select(.info.severity=="medium")   | .host'' {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0); TAKEOVER=$(wc -l < {workspace}/takeover_findings.txt             2>/dev/null || echo 0); AFROG_TOTAL=$(jq -r ''.["poc-id"]'' {workspace}/afrog.jsonl        2>/dev/null | wc -l || echo 0); BUCKETS=$(jq -r ''select(.bucket.exists==1) | .bucket.name'' {workspace}/s3scanner.json 2>/dev/null | wc -l || echo 0);
+    # ── Count metrics ────────────────────────────────────────────────────────
+    PASSIVE=$(wc -l < {workspace}/passive_merged.txt 2>/dev/null || echo 0)
+    CANDIDATES=$(wc -l < {workspace}/subdomains_all.txt 2>/dev/null || echo 0)
+    RESOLVED=$(wc -l < {workspace}/subdomains_resolved.txt 2>/dev/null || echo 0)
+    TLSX_NEW=$(wc -l < {workspace}/tlsx_new_subs.txt 2>/dev/null || echo 0)
+    TLSX_RESOLVED=$(wc -l < {workspace}/subdomains_tlsx_resolved.txt 2>/dev/null || echo 0)
+    TOTAL_RESOLVED=$(wc -l < {workspace}/subdomains_all_resolved.txt 2>/dev/null || echo 0)
+    LIVE_HTTP=$(wc -l < {workspace}/live_urls.txt 2>/dev/null || echo 0)
+    OPEN_PORTS=$(test -f {workspace}/naabu.jsonl && \
+      jq -r '"\(.host):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null | sort -u | wc -l || echo 0)
+    ASN_CIDRS=$(wc -l < {workspace}/asn_ipv4_cidrs.txt 2>/dev/null || echo 0)
+    REVDNS_SUBS=$(wc -l < {workspace}/reverse_dns_subs.txt 2>/dev/null || echo 0)
+    AXFR_SUBS=$(wc -l < {workspace}/axfr_subs.txt 2>/dev/null || echo 0)
+    PERM_GOTATOR=$(wc -l < {workspace}/perm_gotator.txt 2>/dev/null || echo 0)
+    MASSDNS_SUBS=$(wc -l < {workspace}/a_massdns.txt 2>/dev/null || echo 0)
+    CDN_HOSTS=$(jq -r 'select(.cdn==true) | .host' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
+    ORIGIN_HOSTS=$(jq -r 'select(.cdn != true and .waf != true and .cloud != true) | .input' \
+      {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
+    SHARED_HOSTING_IPS=$(wc -l < {workspace}/ip_groups/shared_hosting.txt 2>/dev/null || echo 0)
+    FAVICON_RELATED=$(wc -l < {workspace}/favicon_related_offdomain.txt 2>/dev/null || echo 0)
+    FAVICON_INSCOPE=$(wc -l < {workspace}/favicon_in_scope.txt 2>/dev/null || echo 0)
+    VHOST_NEW=$(wc -l < {workspace}/vhost_new_hosts.txt 2>/dev/null || echo 0)
+    IP_PIVOT_INSCOPE=$(wc -l < {workspace}/ip_pivot_in_scope.txt 2>/dev/null || echo 0)
+    IP_PIVOT_NEIGHBORS=$(wc -l < {workspace}/ip_pivot_neighbors.txt 2>/dev/null || echo 0)
+    PIVOT_NEW=$(wc -l < {workspace}/pivot_new_resolved.txt 2>/dev/null || echo 0)
+    URLS=$(wc -l < {workspace}/all_urls.txt 2>/dev/null || echo 0)
+    JS_FILES=$(wc -l < {workspace}/js_urls.txt 2>/dev/null || echo 0)
+    JS_APIS=$(wc -l < {workspace}/jsapiscan_results.txt 2>/dev/null || echo 0)
+    JS_SUBS=$(wc -l < {workspace}/js_subs.txt 2>/dev/null || echo 0)
+    NUCLEI_CRIT=$(jq -r 'select(.info.severity=="critical") | .host' \
+      {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0)
+    NUCLEI_HIGH=$(jq -r 'select(.info.severity=="high") | .host' \
+      {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0)
+    NUCLEI_MED=$(jq -r 'select(.info.severity=="medium") | .host' \
+      {workspace}/nuclei_hosts.jsonl {workspace}/nuclei_misconfig.jsonl 2>/dev/null | sort -u | wc -l || echo 0)
+    TAKEOVER=$(wc -l < {workspace}/takeover_findings.txt 2>/dev/null || echo 0)
+    AFROG_TOTAL=$(jq -r '.["poc-id"]' {workspace}/afrog.jsonl 2>/dev/null | wc -l || echo 0)
+    BUCKETS=$(jq -r 'select(.bucket.exists==1) | .bucket.name' \
+      {workspace}/s3scanner.json 2>/dev/null | wc -l || echo 0)
 
-    cat > {workspace}/report/summary.md << EOFMD # K1NZR3C0N — Full Recon Report **Target:** {target}
+    # ── Write summary.md using printf (heredoc not usable inside YAML block scalar)
+    {
+      printf '# K1NZR3C0N \xe2\x80\x94 Full Recon Report\n'
+      printf '**Target:** {target}\n\n'
+      printf '## Asset Discovery\n\n'
+      printf '| Metric | Count |\n'
+      printf '|--------|-------|\n'
+      printf '| Passive sources unique | %s |\n' "$PASSIVE"
+      printf '| All subdomain candidates | %s |\n' "$CANDIDATES"
+      printf '| DNS resolved (live) | %s |\n' "$RESOLVED"
+      printf '| TLS SAN new discoveries | %s |\n' "$TLSX_NEW"
+      printf '| TLS SAN resolved | %s |\n' "$TLSX_RESOLVED"
+      printf '| **Total resolved hosts** | **%s** |\n' "$TOTAL_RESOLVED"
+      printf '| Live HTTP endpoints | %s |\n' "$LIVE_HTTP"
+      printf '| Open ports found | %s |\n' "$OPEN_PORTS"
+      printf '| ASN/IP CIDR ranges | %s |\n' "$ASN_CIDRS"
+      printf '| Reverse DNS new subs | %s |\n' "$REVDNS_SUBS"
+      printf '| AXFR zone transfer subs | %s |\n' "$AXFR_SUBS"
+      printf '| Gotator permutation subs | %s |\n' "$PERM_GOTATOR"
+      printf '| Massdns brute subs | %s |\n' "$MASSDNS_SUBS"
+      printf '| CDN hosts | %s |\n' "$CDN_HOSTS"
+      printf '| Origin (non-CDN) hosts | %s |\n' "$ORIGIN_HOSTS"
+      printf '| Shared-hosting IPs | %s |\n\n' "$SHARED_HOSTING_IPS"
+      printf '## Pivot Discovery (favicon / vhost / IP-pivot)\n\n'
+      printf '| Technique | Count |\n'
+      printf '|-----------|-------|\n'
+      printf '| Favicon in-scope new subs | %s |\n' "$FAVICON_INSCOPE"
+      printf '| Favicon off-domain assets | %s |\n' "$FAVICON_RELATED"
+      printf '| VHost new subs (ffuf+SAN) | %s |\n' "$VHOST_NEW"
+      printf '| IP-pivot in-scope new subs | %s |\n' "$IP_PIVOT_INSCOPE"
+      printf '| IP-pivot neighbor domains | %s |\n' "$IP_PIVOT_NEIGHBORS"
+      printf '| **Pivot-resolved bonus hosts** | **%s** |\n\n' "$PIVOT_NEW"
+      printf '## URL & JS Intelligence\n\n'
+      printf '| Metric | Count |\n'
+      printf '|--------|-------|\n'
+      printf '| Total URLs collected | %s |\n' "$URLS"
+      printf '| JS files discovered | %s |\n' "$JS_FILES"
+      printf '| JS API endpoints | %s |\n' "$JS_APIS"
+      printf '| New subs from JS | %s |\n\n' "$JS_SUBS"
+      printf '## Vulnerability Findings\n\n'
+      printf '| Severity | Count |\n'
+      printf '|----------|-------|\n'
+      printf '| Critical | %s |\n' "$NUCLEI_CRIT"
+      printf '| High | %s |\n' "$NUCLEI_HIGH"
+      printf '| Medium | %s |\n' "$NUCLEI_MED"
+      printf '| Afrog PoC | %s |\n' "$AFROG_TOTAL"
+      printf '| Takeover candidates | %s |\n' "$TAKEOVER"
+      printf '| Cloud buckets exposed | %s |\n\n' "$BUCKETS"
+      printf '## Key Output Files\n\n'
+      printf '- `passive_merged.txt` \xe2\x80\x94 all passive unique subdomains (13 sources)\n'
+      printf '- `subdomains_all.txt` \xe2\x80\x94 passive + active + permutation candidates\n'
+      printf '- `subdomains_all_resolved.txt` \xe2\x80\x94 all live DNS-resolved hosts (DNS + TLS)\n'
+      printf '- `axfr_subs.txt` \xe2\x80\x94 zone transfer results (high-value if non-empty!)\n'
+      printf '- `reverse_dns_subs.txt` \xe2\x80\x94 reverse DNS findings from ASN ranges\n'
+      printf '- `perm_gotator.txt` \xe2\x80\x94 gotator smart permutations resolved\n'
+      printf '- `a_massdns.txt` \xe2\x80\x94 massdns brute-force resolved\n'
+      printf '- `httpx.jsonl` \xe2\x80\x94 live HTTP hosts with title/tech fingerprint\n'
+      printf '- `naabu.jsonl` \xe2\x80\x94 port scan results (JSONL)\n'
+      printf '- `cdncheck.jsonl` \xe2\x80\x94 CDN classification per host\n'
+      printf '- `origin_ips.txt` \xe2\x80\x94 non-CDN origin IPs (safe for vhost fuzz / ip pivot)\n'
+      printf '- `favicon_hashes.txt` \xe2\x80\x94 mmh3 favicon hashes per live host\n'
+      printf '- `favicon_in_scope.txt` \xe2\x80\x94 new in-scope subs from favicon pivot\n'
+      printf '- `vhost_new_hosts.txt` \xe2\x80\x94 new subs from vhost ffuf + SSL SAN extraction\n'
+      printf '- `ip_pivot_in_scope.txt` \xe2\x80\x94 new in-scope subs from IP/PTR pivot\n'
+      printf '- `ip_pivot_neighbors.txt` \xe2\x80\x94 neighboring org domains for manual review\n'
+      printf '- `pivot_new_resolved.txt` \xe2\x80\x94 all pivot-discovered hosts after DNS resolution\n'
+      printf '- `all_urls.txt` \xe2\x80\x94 all collected URLs (passive + katana + waymore)\n'
+      printf '- `js_urls.txt` \xe2\x80\x94 JavaScript file URLs\n'
+      printf '- `jsapiscan_results.txt` \xe2\x80\x94 API endpoints from JS analysis\n'
+      printf '- `nuclei_hosts.jsonl` \xe2\x80\x94 nuclei findings on live HTTP\n'
+      printf '- `nuclei_misconfig.jsonl` \xe2\x80\x94 misconfig/exposure on all hosts\n'
+      printf '- `afrog.jsonl` \xe2\x80\x94 afrog PoC-based findings\n'
+      printf '- `takeover_findings.txt` \xe2\x80\x94 subdomain takeover candidates\n'
+      printf '- `s3scanner.json` \xe2\x80\x94 cloud storage bucket scan results\n'
+      printf '- `asn_ipv4_cidrs.txt` \xe2\x80\x94 IPv4 CIDR ranges for target org (metabigor)\n'
+      printf '- `screenshots/` + `gallery.html` \xe2\x80\x94 visual recon gallery\n'
+    } > {workspace}/report/summary.md
 
-    ## Asset Discovery | Metric | Count | |--------|-------| | Passive sources unique | $PASSIVE | | All subdomain candidates | $CANDIDATES | | DNS resolved (live) | $RESOLVED | | TLS SAN new discoveries | $TLSX_NEW | | TLS SAN resolved | $TLSX_RESOLVED | | **Total resolved hosts** | **$TOTAL_RESOLVED** | | Live HTTP endpoints | $LIVE_HTTP | | Open ports found | $OPEN_PORTS | | ASN/IP CIDR ranges | $ASN_CIDRS | | Reverse DNS new subs | $REVDNS_SUBS | | AXFR zone transfer subs | $AXFR_SUBS | | Gotator permutation subs | $PERM_GOTATOR | | Massdns brute subs | $MASSDNS_SUBS | | CDN hosts | $CDN_HOSTS | | Origin (non-CDN) hosts | $ORIGIN_HOSTS | | Shared-hosting IPs | $SHARED_HOSTING_IPS |
-
-    ## Pivot Discovery (favicon / vhost / IP-pivot) | Technique | Count | |-----------|-------| | Favicon in-scope new subs | $FAVICON_INSCOPE | | Favicon off-domain assets | $FAVICON_RELATED | | VHost new subs (ffuf+SAN) | $VHOST_NEW | | IP-pivot in-scope new subs | $IP_PIVOT_INSCOPE | | IP-pivot neighbor domains | $IP_PIVOT_NEIGHBORS | | **Pivot-resolved bonus hosts** | **$PIVOT_NEW** |
-
-    ## URL & JS Intelligence | Metric | Count | |--------|-------| | Total URLs collected | $URLS | | JS files discovered | $JS_FILES | | JS API endpoints | $JS_APIS | | New subs from JS | $JS_SUBS |
-
-    ## Vulnerability Findings | Severity | Count | |----------|-------| | Critical  | $NUCLEI_CRIT | | High      | $NUCLEI_HIGH | | Medium    | $NUCLEI_MED | | Afrog PoC | $AFROG_TOTAL | | Takeover candidates | $TAKEOVER | | Cloud buckets exposed | $BUCKETS |
-
-    ## Key Output Files - \`passive_merged.txt\` — all passive unique subdomains (13 sources) - \`subdomains_all.txt\` — passive + active + permutation candidates - \`subdomains_all_resolved.txt\` — all live DNS-resolved hosts (DNS + TLS) - \`axfr_subs.txt\` — zone transfer results (high-value if non-empty!) - \`reverse_dns_subs.txt\` — reverse DNS findings from ASN ranges - \`perm_gotator.txt\` — gotator smart permutations resolved - \`a_massdns.txt\` — massdns brute-force resolved - \`httpx.jsonl\` — live HTTP hosts with title/tech fingerprint - \`naabu.jsonl\` — port scan results (JSONL) - \`cdncheck.jsonl\` — CDN classification per host - \`ip_groups/shared_hosting.txt\` — IPs hosting multiple subs (shared hosting) - \`ip_groups/ip_to_hosts.json\` — full IP→hosts mapping - \`origin_ips.txt\` — non-CDN origin IPs (safe for vhost fuzz / ip pivot) - \`favicon_hashes.txt\` — mmh3 favicon hashes per live host - \`favicon_in_scope.txt\` — new in-scope subs from favicon pivot - \`favicon_related_offdomain.txt\` — off-domain hosts sharing favicon (review manually) - \`vhost_new_hosts.txt\` — new subs from vhost ffuf + SSL SAN extraction - \`ip_pivot_in_scope.txt\` — new in-scope subs from IP/PTR pivot - \`ip_pivot_neighbors.txt\` — neighboring org domains for manual review - \`pivot_new_resolved.txt\` — all pivot-discovered hosts after DNS resolution - \`all_urls.txt\` — all collected URLs (passive + katana + waymore) - \`js_urls.txt\` — JavaScript file URLs - \`jsapiscan_results.txt\` — API endpoints from JS analysis - \`nuclei_hosts.jsonl\` — nuclei findings on live HTTP - \`nuclei_misconfig.jsonl\` — misconfig/exposure on all hosts - \`afrog.jsonl\` — afrog PoC-based findings - \`takeover_findings.txt\` — subdomain takeover candidates - \`s3scanner.json\` — cloud storage bucket scan results - \`asn_ipv4_cidrs.txt\` — IPv4 CIDR ranges for target org (metabigor) - \`amass_intel.txt\` + \`amass_intel_cidrs.txt\` — org WHOIS ASN CIDRs (amass intel) - \`screenshots/\` + \`gallery.html\` — visual recon gallery EOFMD
-
-    printf ''\n=== RECON COMPLETE ===\n''; cat {workspace}/report/summary.md'
+    printf '\n=== RECON COMPLETE ===\n'
+    cat {workspace}/report/summary.md
   outputs:
     summary: '{workspace}/report/summary.md'
