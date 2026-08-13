@@ -1095,7 +1095,9 @@ steps:
       # gotator: smarter permutations — prefix/suffix/number increments + word mutations
       printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n149.112.112.112\n208.67.222.222\n208.67.220.220\n64.6.64.6\n64.6.65.6\n84.200.69.80\n84.200.70.40\n185.228.168.9\n185.228.169.9\n77.88.8.8\n77.88.8.1\n156.154.70.1\n156.154.71.1\n198.101.242.72\n176.103.130.130\n' > {workspace}/resolvers.txt 2>/dev/null || true
       if test -s {workspace}/passive_merged.txt; then
-        gotator -sub {workspace}/passive_merged.txt \
+        # Limit input to perm_input_limit to avoid combinatorial explosion
+        head -{vars.perm_input_limit} {workspace}/passive_merged.txt > {workspace}/gotator_input.txt || true
+        gotator -sub {workspace}/gotator_input.txt \
           -depth {vars.gotator_depth} -numbers 3 -md \
           -mindup -t 200 -silent 2>/dev/null \
           | grep -E "\.{target}$" \
@@ -1136,7 +1138,7 @@ steps:
       # e.g. "idc-pentest.viettelidc.com.vn" → prefix = "idc-pentest"
       # then split by "-" and "." to get stems: "idc", "pentest"
       STEMS=$(grep -oP '^[a-z0-9][a-z0-9._-]*(?=\.{target})' "$INPUT" 2>/dev/null \
-        | tr '-.' '\n\n' \
+        | tr -- '-.' '\n\n' \
         | tr '[:upper:]' '[:lower:]' \
         | grep -E '^[a-z][a-z0-9]{1,19}$' \
         | sort -u)
