@@ -41,6 +41,9 @@ vars:
   massdns_rate: '5000'         # reduced from 20000 — prevents VMware NAT UDP table overflow
   gotator_depth: '2'
   shuffledns_threads: '1500'   # reduced from 5000 — keeps NAT from flooding
+  perm_threads: '500'          # separate thread count for permutation resolve (fewer resolvers used)
+  perm_input_limit: '100'      # max subdomains fed into dnsgen/gotator (more → exponential permutations)
+  perm_output_limit: '5000'    # cap dnsgen output before resolving (prevents timeout on large wordlists)
   naabu_rate: '500'            # reduced from 1500 — stable port scan on VMware NAT
   naabu_top_ports: '1000'
   rustscan_batch: '2000'       # reduced from 5000
@@ -1054,13 +1057,15 @@ steps:
     skip_if_exists: true
     timeout: 15m
     run: |
-      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n' > {workspace}/resolvers.txt 2>/dev/null || true
+      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n149.112.112.112\n208.67.222.222\n208.67.220.220\n64.6.64.6\n64.6.65.6\n84.200.69.80\n84.200.70.40\n185.228.168.9\n185.228.169.9\n77.88.8.8\n77.88.8.1\n156.154.70.1\n156.154.71.1\n198.101.242.72\n176.103.130.130\n' > {workspace}/resolvers.txt 2>/dev/null || true
       if test -s {workspace}/passive_merged.txt; then
-        head -300 {workspace}/passive_merged.txt | dnsgen - 2>/dev/null \
-          | shuffledns -d {target} -r {workspace}/resolvers.txt -t {vars.shuffledns_threads} -mode resolve -silent 2>/dev/null \
+        head -{vars.perm_input_limit} {workspace}/passive_merged.txt | dnsgen - 2>/dev/null \
+          | head -{vars.perm_output_limit} \
+          | shuffledns -d {target} -r {workspace}/resolvers.txt -t {vars.perm_threads} -mode resolve -silent 2>/dev/null \
           | sort -u > {workspace}/perm_dnsgen.txt || true
       fi
       touch {workspace}/perm_dnsgen.txt
+      printf 'dnsgen permutations resolved: %s\n' "$(wc -l < {workspace}/perm_dnsgen.txt)"
     outputs:
       file: '{workspace}/perm_dnsgen.txt'
     optional: true
@@ -1070,11 +1075,13 @@ steps:
     timeout: 15m
     run: |
       if test -s {workspace}/passive_merged.txt; then
-        alterx -l {workspace}/passive_merged.txt -silent -limit 50000 2>/dev/null \
-          | dnsx -silent -r {vars.dns_resolvers} -t {vars.dnsx_threads} -retry {vars.dnsx_retry} 2>/dev/null \
+        head -{vars.perm_input_limit} {workspace}/passive_merged.txt \
+          | alterx -silent -limit {vars.perm_output_limit} 2>/dev/null \
+          | dnsx -silent -r {vars.dns_resolvers} -t {vars.perm_threads} -retry {vars.dnsx_retry} 2>/dev/null \
           | sort -u > {workspace}/perm_alterx.txt || true
       fi
       touch {workspace}/perm_alterx.txt
+      printf 'alterx permutations resolved: %s\n' "$(wc -l < {workspace}/perm_alterx.txt)"
     outputs:
       file: '{workspace}/perm_alterx.txt'
     optional: true
@@ -1084,14 +1091,15 @@ steps:
     timeout: 20m
     run: |
       # gotator: smarter permutations — prefix/suffix/number increments + word mutations
-      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n' > {workspace}/resolvers.txt 2>/dev/null || true
+      printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n149.112.112.112\n208.67.222.222\n208.67.220.220\n64.6.64.6\n64.6.65.6\n84.200.69.80\n84.200.70.40\n185.228.168.9\n185.228.169.9\n77.88.8.8\n77.88.8.1\n156.154.70.1\n156.154.71.1\n198.101.242.72\n176.103.130.130\n' > {workspace}/resolvers.txt 2>/dev/null || true
       if test -s {workspace}/passive_merged.txt; then
         gotator -sub {workspace}/passive_merged.txt \
           -depth {vars.gotator_depth} -numbers 3 -md \
           -mindup -t 200 -silent 2>/dev/null \
           | grep -E "\.{target}$" \
+          | head -{vars.perm_output_limit} \
           | shuffledns -d {target} -r {workspace}/resolvers.txt \
-              -t {vars.shuffledns_threads} -mode resolve -silent 2>/dev/null \
+              -t {vars.perm_threads} -mode resolve -silent 2>/dev/null \
           | sort -u > {workspace}/perm_gotator.txt || true
       fi
       touch {workspace}/perm_gotator.txt
