@@ -8,7 +8,16 @@ from sqlalchemy import (
     Boolean, Column, DateTime, Integer, String, Text,
     create_engine, event, text,
 )
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
+try:
+    # SQLAlchemy >= 2.0
+    from sqlalchemy.orm import DeclarativeBase
+    class Base(DeclarativeBase):
+        pass
+except ImportError:
+    # SQLAlchemy < 2.0 (1.3.x / 1.4.x)
+    from sqlalchemy.ext.declarative import declarative_base
+    Base = declarative_base()
 
 from .config import DB_PATH, RUNS_DIR
 
@@ -29,10 +38,6 @@ def _make_engine(path=DB_PATH):
 
 _engine = _make_engine()
 SessionLocal = sessionmaker(bind=_engine, autoflush=False)
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 class Run(Base):
@@ -131,7 +136,11 @@ def tool_version_to_dict(t: "ToolVersion") -> dict[str, Any]:
 def init_db() -> None:
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(_engine)
-    with _engine.connect() as conn:
+    # Apply schema migrations (idempotent — column already exists → ignore)
+    # Use raw connection to support both SQLAlchemy 1.3 and 2.0
+    raw = _engine.raw_connection()
+    try:
+        cur = raw.cursor()
         for stmt in [
             "ALTER TABLE runs ADD COLUMN steps_json TEXT DEFAULT '[]'",
             "ALTER TABLE runs ADD COLUMN paused_at DATETIME",
@@ -140,10 +149,12 @@ def init_db() -> None:
             "ALTER TABLE findings ADD COLUMN screenshot TEXT",
         ]:
             try:
-                conn.execute(text(stmt))
-                conn.commit()
+                cur.execute(stmt)
             except Exception:
                 pass
+        raw.commit()
+    finally:
+        raw.close()
 
 
 def get_db() -> Session:
