@@ -4,7 +4,7 @@ Categories:
   gh_binary    – download pre-built binary from GitHub Releases
   pip          – pip3 install --upgrade
   git          – git pull + pip install -r requirements.txt
-  rebuild_only – no pre-built binary; update via docker build
+  rebuild_only – no pre-built binary; update by re-running install.sh step
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 BIN_DIR = Path("/usr/local/bin")
-WORDLISTS_DIR = Path("/app/wordlists")
+WORDLISTS_DIR = Path(os.environ.get("K1NZR3C0N_BASE", "/opt/k1nzr3c0n")) / "wordlists"
 
 # Optional GitHub token — raises rate limit from 60 to 5,000 req/hr
 _GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")

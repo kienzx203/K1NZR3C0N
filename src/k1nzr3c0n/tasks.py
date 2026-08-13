@@ -284,7 +284,7 @@ def _build_key_env(key_map: dict[str, str]) -> dict[str, str]:
     """Build an env-var dict from the DB key_map to inject into the workflow subprocess.
 
     DB keys override existing env vars so that /keys UI is the single source of truth.
-    Keys already set in the process environment (from .env / docker-compose) are kept
+    Keys already set in the process environment (from .env / systemd service) are kept
     as fallback when the DB has no entry for that provider.
     """
     import os
@@ -705,7 +705,7 @@ def check_tool_versions() -> dict:
 
         def _check_wordlist(wl):
             name = f"wordlist:{wl['name']}"
-            path = Path("/app/wordlists") / wl["file"]
+            path = Path(os.environ.get("K1NZR3C0N_BASE", "/opt/k1nzr3c0n")) / "wordlists" / wl["file"]
             if path.exists():
                 lines = sum(1 for _ in open(path, "rb"))
                 installed = f"{lines} lines"

@@ -18,7 +18,7 @@ vars:
   arjun_threads: '5'
   ffuf_threads: '40'
   ffuf_filter_size: ''
-  param_wordlist: /app/wordlists/params-medium.txt
+  param_wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/params-medium.txt
   httpx_threads: '50'
   nuclei_rl: '100'
   nuclei_timeout: '10'

@@ -7,7 +7,7 @@ runs/*
 
 # Reports
 reports/
-
+install.sh
 # Python
 __pycache__/
 *.pyc

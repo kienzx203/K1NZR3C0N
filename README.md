@@ -9,63 +9,74 @@ Automated recon pipeline for bug bounty. Runs security tools in a coordinated wo
 ## Architecture
 
 ```
-Browser → FastAPI (app) → SQLite (runs.db)
-                ↓
-           Redis queue
-                ↓
-         Celery worker  ←→  /app/runs/<target>/<timestamp>/
-         Celery beat (schedules)
+Browser → FastAPI (k1nzr3c0n-app :8000) → SQLite (runs/k1nzr3c0n.db)
+                        ↓
+                   Redis queue
+                        ↓
+           Celery worker (k1nzr3c0n-worker) ←→ /opt/k1nzr3c0n/runs/<target>/<ts>/
+           Celery beat   (k1nzr3c0n-beat)
 ```
 
 - **Backend**: FastAPI + SQLite — manages runs, streams logs, serves the React UI
 - **Worker**: Celery — executes workflow steps, writes output files
-- **Frontend**: React — run dashboard, live log stream, file explorer with per-format renderers
-- **Skills**: Qwen Code v0.21.0 installed in container, two custom skills pre-loaded
+- **Frontend**: React/Vite — run dashboard, live log stream, file explorer with per-format renderers
+- **Deployment**: bare-metal Kali Linux, systemd services, `/opt/k1nzr3c0n/`
 
 ---
 
-## Quick Start
+## Quick Start (Kali Linux)
 
 ```bash
-# Clone and enter
-git clone <repo> && cd K1NZR3C0N
+# Download and run the install script (one-time setup)
+curl -fsSL https://raw.githubusercontent.com/<repo>/main/install.sh | bash
 
-# Create .env (see Environment section below)
-cp .env.example .env
+# Or run the included script
+bash install.sh
 
-# Start everything
-bash up.sh
-# → installs Qwen Code on host (if not present)
-# → syncs .qwen/skills/ to ~/.qwen/skills/
-# → docker compose up -d
+# Check services
+bash start.sh status
 
 # Open UI
-open http://127.0.0.1:8000
+xdg-open http://127.0.0.1:8000
 ```
 
-> First run downloads nuclei templates (~13k) into a persistent Docker volume. Subsequent starts are instant.
+The install script:
+- Installs all system dependencies (Go, Python, Ruby tools)
+- Installs 100+ security tools to `/usr/local/bin`
+- Deploys app to `/opt/k1nzr3c0n/`
+- Creates systemd services (`k1nzr3c0n-app`, `k1nzr3c0n-worker`, `k1nzr3c0n-beat`)
+- Seeds API keys to the DB
+- Installs OpenCode and Claude Code
 
-### Docker only (skip Qwen host install)
+### start.sh helper
 
 ```bash
-docker compose up -d
+bash start.sh          # start all services
+bash start.sh stop     # stop all services
+bash start.sh restart  # restart all services
+bash start.sh status   # show status of all services
+bash start.sh logs     # tail k1nzr3c0n-app logs
+bash start.sh logs k1nzr3c0n-worker  # tail worker logs
 ```
 
 ---
 
 ## Environment
 
-Create `.env` in the project root (gitignored, never commit):
+Edit `/opt/k1nzr3c0n/.env` (never commit):
 
 ```env
 # Raises GitHub API rate limit from 60 → 5,000 req/hr for tool update checks
 # Create at: https://github.com/settings/tokens (no scopes needed)
 GITHUB_TOKEN=github_pat_...
 
-# Web UI bind address (default: localhost only)
-HOST=127.0.0.1
-PORT=8000
+# Security API keys — also configurable via /keys UI (stored in SQLite DB)
+SECURITYTRAILS_KEY=...
+SHODAN_API_KEY=...
+VIRUSTOTAL_KEY=...
 ```
+
+API keys are stored in the SQLite DB via the `/keys` UI. The worker reads from the DB at run start — no service restart needed after changing keys in the UI.
 
 ---
 
@@ -78,7 +89,7 @@ Three templates ship out of the box, selectable from the UI when creating a run.
 Full-coverage recon from subdomain discovery to vulnerability scanning.
 
 ```
-Passive subdomain (subfinder/amass/chaos/findomain)
+Passive subdomain (subfinder/amass/chaos/findomain/securitytrails)
 → DNS brute (gobuster/shuffledns/puredns)
 → Permutation (dnsgen/alterx)
 → Port scan (rustscan/nmap)
@@ -160,14 +171,14 @@ URL collection (fallparams/gau/katana)
 
 ## Workflow YAML Format
 
-Workflows live in `workflows/`. Steps run in dependency order; independent steps run concurrently.
+Workflows live in `/opt/k1nzr3c0n/workflows/`. Steps run in dependency order; independent steps run concurrently.
 
 ```yaml
 name: my-workflow
 description: 'What this does'
 vars:
   my_flag: 'true'
-  wordlist: /app/wordlists/common.txt
+  wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/common.txt
 
 steps:
   - id: probe
@@ -198,14 +209,13 @@ steps:
 | `{vars.name}` | Workflow var (or run-time override) |
 | `{steps.id.output_key}` | Output path from a previous step |
 
-> `timeout:` values do not support `{vars.*}` — use a literal (`timeout: 60s`).
-> Inside `run:` shell commands, use `$VAR` bash syntax for shell variables.
+> Use `${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/` for all tool/wordlist paths — it resolves at bash runtime so the workflow is portable.
 
 ---
 
 ## Tool Arsenal
 
-All tools are installed in the Docker image. No host dependencies required.
+All tools are installed to `/usr/local/bin` on bare-metal Kali.
 
 | Category | Tools |
 |---|---|
@@ -249,26 +259,10 @@ The file explorer in the UI renders each format with a dedicated viewer — sort
 
 ---
 
-## Qwen Code Integration
+## AI Integration
 
-Qwen Code v0.21.0 is installed inside the Docker container and on the host via `up.sh`.
-
-Two custom skills are pre-loaded:
-
-| Skill | Purpose |
-|---|---|
-| `k1nzr3c0n-analyst` | Red team analyst — reads run logs, triages attack surface, correlates findings across all output files and SQLite without HTTP |
-| `k1nzr3c0n-js-analyst` | JS specialist — finds all JS files (webpack chunks, sourcemaps), extracts endpoints, maps API surface, assesses auth mechanisms |
-
-```bash
-# Use inside the worker container
-docker exec -it k1nzr3c0n-worker-1 bash
-qwen
-# → skills are auto-loaded
-# → "analyze the last run for target.com"
-```
-
-Add new skills: place `SKILL.md` under `.qwen/skills/<name>/` and run `bash up.sh`.
+- **OpenCode** — accessible at `/opencode` in the web UI (runs on port 4040)
+- **Claude Code** — `claude` CLI available system-wide
 
 ---
 
@@ -276,59 +270,43 @@ Add new skills: place `SKILL.md` under `.qwen/skills/<name>/` and run `bash up.s
 
 ```
 K1NZR3C0N/
-├── docker-compose.yml           # 4 services: app, worker, beat, redis
-├── Dockerfile                   # multi-stage: gobuilder → uibuilder → runtime
-├── up.sh                        # Qwen install + skill sync + docker compose up
+├── install.sh                   # one-shot bare-metal Kali installer
+├── start.sh                     # service start/stop/status helper
 ├── .env                         # secrets — gitignored, never commit
 ├── workflows/
 │   ├── 01-full-recon-pipeline.yaml
 │   ├── 02-js-secrets-recon.yaml
 │   ├── 03-param-discovery.yaml
 │   └── ARSENAL.md               # manual recon reference (passive sources, tools)
-├── .qwen/skills/
-│   ├── k1nzr3c0n-analyst/SKILL.md
-│   └── k1nzr3c0n-js-analyst/SKILL.md
 ├── src/k1nzr3c0n/
 │   ├── api/                     # FastAPI routes
 │   ├── tasks.py                 # Celery task definitions
 │   ├── tools.py                 # Tool wrapper + version check
-│   └── workflow/                # YAML parser + executor
-├── frontend/src/components/
-│   └── FileExplorer.jsx         # 26-component file renderer
+│   └── workflow.py              # YAML parser + executor
+├── frontend/src/
+│   └── ...                      # React/Vite source
+├── scripts/
+│   └── securitytrails_fetch.py  # SecurityTrails API client
 ├── wordlists/                   # bundled wordlists (subdomains, dirs, params, routes)
 └── runs/                        # run outputs + k1nzr3c0n.db — gitignored
 ```
 
----
+Deployed at `/opt/k1nzr3c0n/` with systemd services:
 
-## Docker Volumes
-
-| Volume | Mount | Purpose |
-|---|---|---|
-| `./runs` | `/app/runs` | Run outputs + SQLite DB |
-| `./workflows` | `/app/workflows` | Hot-reload workflows (no rebuild needed) |
-| `./.qwen/skills` | `/root/.qwen/skills` (ro) | Qwen skill sync |
-| `nuclei_data` | `/root/nuclei-templates` | Nuclei templates — persist across restarts |
-| `redis_data` | Redis internal | Task queue persistence |
-| `beat_data` | Celery beat internal | Schedule state |
-
----
-
-## Rebuilding the Image
-
-Required when: Dockerfile changes (new tool, dependency update).
-
-```bash
-docker compose build --no-cache
-docker compose up -d
 ```
-
-Templates in `nuclei_data` survive rebuilds — no re-download needed.
+/opt/k1nzr3c0n/
+├── src/          → Python source (editable install)
+├── workflows/    → YAML workflow definitions
+├── scripts/      → Helper scripts
+├── wordlists/    → Tool wordlists
+├── static/       → Built React UI
+└── runs/         → Run outputs + SQLite DB
+```
 
 ---
 
 ## Adding a Workflow
 
 1. Create `workflows/my-workflow.yaml` with `name`, `description`, `vars`, `steps`
-2. The UI picks it up immediately — no restart needed (volume-mounted)
+2. The UI picks it up immediately — no restart needed
 3. Use `{target}`, `{workspace}`, `{vars.*}`, `{steps.<id>.<output>}` in `run:` commands

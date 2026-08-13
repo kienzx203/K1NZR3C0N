@@ -28,13 +28,13 @@ vars:
   chaos_key: ''
   # API keys are auto-injected from the /keys page — no need to set them here.
   # Wordlists — ordered fastest→most-complete
-  sub_wordlist: /app/wordlists/subdomains-top1million-20000.txt
-  sub_wordlist_full: /app/wordlists/subdomains-top1million-110000.txt
-  sub_wordlist_jhaddix: /app/wordlists/dns-Jhaddix.txt      # 2.17M entries
-  sub_wordlist_assetnote: /app/wordlists/best-dns-wordlist.txt # 9.5M entries (download on first build)
-  sub_wordlist_namelist: /app/wordlists/namelist.txt         # 151k focused list
+  sub_wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/subdomains-top1million-20000.txt
+  sub_wordlist_full: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/subdomains-top1million-110000.txt
+  sub_wordlist_jhaddix: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/dns-Jhaddix.txt      # 2.17M entries
+  sub_wordlist_assetnote: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/best-dns-wordlist.txt # 9.5M entries (download on first build)
+  sub_wordlist_namelist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/namelist.txt         # 151k focused list
   # Resolvers — trickest pre-validated list (12k resolvers) preferred; fallback = 6 hardcoded
-  resolvers_file: /app/wordlists/resolvers-trickest.txt
+  resolvers_file: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/resolvers-trickest.txt
   dns_resolvers: 1.1.1.1,8.8.8.8,1.0.0.1,8.8.4.4,9.9.9.9,208.67.222.222
   dnsx_threads: '200'
   dnsx_retry: '3'
@@ -62,7 +62,7 @@ vars:
   run_favicon_pivot: 'false'     # mmh3 favicon hash → Shodan/FOFA same-favicon hosts
   run_vhost_ip_fuzz: 'false'     # ffuf Host-header fuzz non-CDN IPs (touches target directly)
   run_ip_pivot: 'false'          # mapcidr PTR sweep neighboring /24 CIDR blocks
-  vhost_wordlist: /app/wordlists/subdomains-top1million-20000.txt
+  vhost_wordlist: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/subdomains-top1million-20000.txt
   vhost_ip_fuzz_max_ips: '20'
   ip_pivot_prefix: '24'
   ip_pivot_max_ranges: '5'
@@ -84,8 +84,8 @@ steps:
 
     # ── Supplement subfinder config with any env-var keys not yet written ───────
     # tasks.py writes provider-config.yaml from /keys UI DB before the run starts.
-    # This block adds any keys present only as env vars (e.g. set in docker-compose
-    # or .env) that were not in the DB at run start time. It never overwrites DB keys.
+    # This block adds any keys present only as env vars (e.g. set in .env / systemd
+    # service environment) that were not in the DB at run start time. It never overwrites DB keys.
     {
       # Preserve what tasks.py already wrote
       cat "$EXISTING_SF" 2>/dev/null || true
@@ -541,14 +541,18 @@ steps:
   when: '{vars.run_passive}'
   shell: true
   optional: true
-  skip_if_exists: true
   timeout: 5m
+  # Run after subfinder/gau/waymore finish — they saturate the network
+  # during the first 60-120s of the workflow, causing SecurityTrails TLS timeouts.
+  depends_on:
+    - p_subfinder
+    - p_gau
+    - p_waymore
   run: |
     ST_KEY="${SECURITYTRAILS_KEY:-}"
-    touch {workspace}/p_securitytrails.txt
-    [ -z "$ST_KEY" ] && echo "[securitytrails] no key — skipping" && exit 0
-    python3 /app/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
-      2>/dev/null | sort -u > {workspace}/p_securitytrails.txt || true
+    [ -z "$ST_KEY" ] && echo "[securitytrails] no key — skipping" && touch {workspace}/p_securitytrails.txt && exit 0
+    python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
+      | sort -u > {workspace}/p_securitytrails.txt || true
     touch {workspace}/p_securitytrails.txt
     printf 'SecurityTrails: %s subdomains\n' "$(wc -l < {workspace}/p_securitytrails.txt)"
   outputs:
@@ -1865,7 +1869,7 @@ steps:
       -s {workspace}/screenshots \
       --write-db \
       --write-db-uri sqlite://{workspace}/gowitness.sqlite3 \
-      --chrome-path /usr/local/bin/chromium-docker \
+      --chrome-path /usr/local/bin/chromium-server \
       -T 30 --threads {vars.screenshot_threads} -q 2>{workspace}/gowitness.log || true
     cd {workspace} && gowitness report generate \
       --db-uri sqlite://{workspace}/gowitness.sqlite3 -q 2>/dev/null || true

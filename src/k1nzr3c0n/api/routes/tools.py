@@ -69,7 +69,7 @@ def list_tools():
         "wordlists":          wl_out,
         "outdated_count":     outdated_count,
         "check_failed_count": check_failed_count,
-        "warning":            "Updates applied in-place. Use 'docker compose build' to persist across container recreation.",
+        "warning":            "Updates applied in-place. Restart k1nzr3c0n-worker to pick up changes: systemctl restart k1nzr3c0n-worker",
     }
 
 

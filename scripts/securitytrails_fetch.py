@@ -16,10 +16,11 @@ import ssl
 import http.client
 import time
 
-HOSTNAME = "api.securitytrails.com"
-PORT     = 443
-RETRIES  = 5
-RETRY_DELAY = 3   # seconds between attempts
+HOSTNAME    = "api.securitytrails.com"
+PORT        = 443
+RETRIES     = 10   # more attempts to survive transient Docker/WSL2 network flaps
+RETRY_DELAY = 5    # seconds between attempts
+IP_TIMEOUT  = 5    # per-IP connect+TLS timeout (fast fail — good IPs connect in <1s)
 
 
 def _routable_ips() -> list:
@@ -62,7 +63,7 @@ def _try_once(api_key: str, domain: str) -> list | None:
 
     for ip in ips:
         try:
-            conn = _DirectHTTPS(ip, HOSTNAME, PORT, timeout=20)
+            conn = _DirectHTTPS(ip, HOSTNAME, PORT, timeout=IP_TIMEOUT)
             conn.request("GET", path, headers=headers)
             resp = conn.getresponse()
             data = json.loads(resp.read())
