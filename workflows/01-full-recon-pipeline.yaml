@@ -536,11 +536,13 @@ steps:
   timeout: 10m
   run: |
     gauplus --subs {target} -t 10 --timeout 30 -providers otx,urlscan 2>/dev/null \
+      | tee {workspace}/p_gauplus_urls.txt \
       | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
       | sort -u > {workspace}/p_gauplus_subs.txt || true
-    touch {workspace}/p_gauplus_subs.txt
+    touch {workspace}/p_gauplus_subs.txt {workspace}/p_gauplus_urls.txt
   outputs:
-    file: '{workspace}/p_gauplus_subs.txt'
+    subs: '{workspace}/p_gauplus_subs.txt'
+    urls: '{workspace}/p_gauplus_urls.txt'
 - id: p_urlscan
   name: '[passive] urlscan.io — global scan index (finds subs from security researcher scans)'
   depends_on:
@@ -1526,15 +1528,28 @@ steps:
   - path: '{workspace}/subdomains_all_resolved.txt'
     min_bytes: 1
 - id: naabu_topscan
-  name: port scan top-1000 — naabu (fast sweep all live hosts incl. TLS-discovered)
+  name: port scan — naabu passive (Shodan internetdb) + active CONNECT web ports
   depends_on:
   - merge_all_resolved
   run_on_failed_deps: true
   when: '{vars.run_portscan}'
   optional: true
   skip_if_exists: true
+  shell: true
   timeout: 90m
-  run: naabu -list {steps.merge_all_resolved.all_resolved} -rate {vars.naabu_rate} -top-ports {vars.naabu_top_ports} -json -o {workspace}/naabu.jsonl -silent -r {vars.dns_resolvers}
+  run: |
+    touch {workspace}/naabu.jsonl
+    # Phase 1: passive scan from Shodan internetdb (instant, no network scan needed)
+    # Very fast — resolves hostnames to IPs then queries internetdb.shodan.io
+    naabu -list {steps.merge_all_resolved.all_resolved} -passive \
+      -json -silent 2>/dev/null >> {workspace}/naabu.jsonl || true
+    printf '[naabu] passive (Shodan): %s port records\n' "$(wc -l < {workspace}/naabu.jsonl)"
+    # Phase 2: active CONNECT scan on common web ports (reliable on VMware NAT)
+    # Avoids -top-ports N which is slow; targets ports most likely to be HTTP/app servers
+    naabu -list {steps.merge_all_resolved.all_resolved} \
+      -p 80,81,443,591,593,832,981,1010,1311,2082,2087,2095,2096,2480,3000,3128,3333,4243,4567,4711,4712,4993,5000,5104,5108,5800,6543,7000,7396,7474,8000,8001,8008,8014,8042,8069,8080,8081,8083,8088,8090,8091,8118,8123,8172,8222,8243,8280,8281,8333,8443,8500,8834,8880,8888,8983,9000,9043,9060,9080,9090,9091,9200,9443,9800,9981,10000,11371,12443,16080,18091,18092,20720,28017 \
+      -rate {vars.naabu_rate} -json -silent -r {vars.dns_resolvers} 2>/dev/null >> {workspace}/naabu.jsonl || true
+    printf '[naabu] total port records (passive+active): %s\n' "$(wc -l < {workspace}/naabu.jsonl)"
   outputs:
     naabu_jsonl: '{workspace}/naabu.jsonl'
 - id: naabu_asn_scan
@@ -1977,10 +1992,13 @@ steps:
       --chrome-path /usr/bin/chromium \
       -T 30 --threads {vars.screenshot_threads} -q 2>{workspace}/gowitness.log || true
     cd {workspace} && gowitness report generate \
-      --db-uri sqlite://{workspace}/gowitness.sqlite3 -q 2>/dev/null || true
+      --db-uri sqlite://{workspace}/gowitness.sqlite3 \
+      --screenshot-path {workspace}/screenshots \
+      --zip-name {workspace}/gowitness-report.zip \
+      -q 2>/dev/null || true
   outputs:
     screenshot_dir: '{workspace}/screenshots'
-    gallery_html: '{workspace}/gallery.html'
+    gallery_zip: '{workspace}/gowitness-report.zip'
 - id: url_collect
   name: URL collection — katana JS-aware crawl + hakrawler (parallel; gau/wayback already ran in passive phase)
   depends_on:
@@ -2021,6 +2039,23 @@ steps:
     outputs:
       file: '{workspace}/hakrawler_urls.txt'
     optional: true
+  - id: cariddi_crawl
+    shell: true
+    skip_if_exists: true
+    timeout: 15m
+    run: |
+      # cariddi: endpoint + secret hunter, crawls for juicy endpoints/params
+      # Runs on top 30 live URLs to avoid taking too long
+      touch {workspace}/cariddi_urls.txt
+      test -s {workspace}/live_urls.txt || exit 0
+      head -30 {workspace}/live_urls.txt | while IFS= read -r url; do
+        echo "$url" | timeout 20 cariddi -c 10 -md 2 -rua -plain 2>/dev/null
+      done | grep -E '^https?://' | sort -u >> {workspace}/cariddi_urls.txt || true
+      touch {workspace}/cariddi_urls.txt
+      printf 'cariddi URLs: %s\n' "$(wc -l < {workspace}/cariddi_urls.txt)"
+    outputs:
+      file: '{workspace}/cariddi_urls.txt'
+    optional: true
 - id: merge_crawl_urls
   name: merge all crawled URLs → deduplicated in-scope URL list
   depends_on:
@@ -2029,7 +2064,7 @@ steps:
   timeout: 5m
   when: '{vars.run_crawl}'
   shell: true
-  run: "(\n  cat {workspace}/live_urls.txt 2>/dev/null || true;\n  cat {workspace}/katana_urls.txt 2>/dev/null || true;\n  cat {workspace}/hakrawler_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_gau_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waybackurls_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waymore_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_urlfinder_urls.txt 2>/dev/null || true\n) | grep -E '^https?://' | awk -v t=\"{target}\" 'tolower($0) ~ tolower(t)' | sort -u > {workspace}/all_urls.txt; printf 'Total unique URLs collected: %s\\n' \"$(wc -l < {workspace}/all_urls.txt)\" >> {workspace}/resolve_stats.txt || true; touch {workspace}/all_urls.txt"
+  run: "(\n  cat {workspace}/live_urls.txt 2>/dev/null || true;\n  cat {workspace}/katana_urls.txt 2>/dev/null || true;\n  cat {workspace}/hakrawler_urls.txt 2>/dev/null || true;\n  cat {workspace}/cariddi_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_gau_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_gauplus_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waybackurls_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_waymore_urls.txt 2>/dev/null || true;\n  cat {workspace}/p_urlfinder_urls.txt 2>/dev/null || true\n) | grep -E '^https?://' | awk -v t=\"{target}\" 'tolower($0) ~ tolower(t)' | sort -u > {workspace}/all_urls.txt; printf 'Total unique URLs collected: %s\\n' \"$(wc -l < {workspace}/all_urls.txt)\" >> {workspace}/resolve_stats.txt || true; touch {workspace}/all_urls.txt"
   outputs:
     all_urls: '{workspace}/all_urls.txt'
 - id: subjs_extract
