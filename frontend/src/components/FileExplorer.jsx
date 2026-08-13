@@ -169,18 +169,29 @@ export default function FileExplorer({ runId }) {
     content.startsWith('id,alive,request,resolve,url,subdomain')
   )
 
+  // Smart text file category: use categorize() on the selected file
+  const selectedCat = selected ? categorize(selected) : null
+
+  // Subdomain list viewer — all plain .txt files in subdomain group
+  const isSubdomainTxt = ext === '.txt' && selectedCat === 'subdomain' && !isSpecialText
+
+  // URL list viewer — all plain .txt files in url group
+  const isUrlTxt = ext === '.txt' && selectedCat === 'url'
+
   // Generic JSON pretty-print for unknown JSON with 0 findings
   const showJsonPretty = isJsonExt && !showTable && !!content
 
   const LINES_LIMIT = 500
   const lines = useMemo(() => {
-    if (!content || isMarkdown || isStats || showTable || showJsonPretty || isSpecialText || isOneForAllCsv || isImage) return []
+    if (!content || isMarkdown || isStats || showTable || showJsonPretty ||
+        isSpecialText || isOneForAllCsv || isSubdomainTxt || isUrlTxt || isImage) return []
     return content.split('\n')
-  }, [content, isMarkdown, isStats, showTable, showJsonPretty, isSpecialText, isOneForAllCsv, isImage])
+  }, [content, isMarkdown, isStats, showTable, showJsonPretty, isSpecialText, isOneForAllCsv, isSubdomainTxt, isUrlTxt, isImage])
   const displayLines = showAllLines ? lines : lines.slice(0, LINES_LIMIT)
 
   const recordLabel = isNaabu ? 'ports' : isFerox ? 'paths' : isFfuf ? 'results'
-    : isNuclei ? 'findings' : isHttpx ? 'hosts' : isOneForAllCsv ? 'subdomains' : 'records'
+    : isNuclei ? 'findings' : isHttpx ? 'hosts'
+    : isOneForAllCsv ? 'subdomains' : isSubdomainTxt ? 'subdomains' : isUrlTxt ? 'URLs' : 'records'
 
   return (
     <div className="flex h-full text-xs">
@@ -242,6 +253,12 @@ export default function FileExplorer({ runId }) {
                   · {Math.max(0, content.trim().split('\n').length - 1)} subdomains
                 </span>
               )}
+              {(isSubdomainTxt || isUrlTxt) && content && (() => {
+                const cnt = content.trim().split('\n').filter(Boolean).length
+                return cnt > 0
+                  ? <span className="text-[10px] text-[#58a6ff]">· {cnt} {isUrlTxt ? 'URLs' : 'subdomains'}</span>
+                  : <span className="text-[10px] text-[#484f58]">· empty</span>
+              })()}
               {!showTable && !showJsonPretty && !isSpecialText && lines.length > 0 && (
                 <span className="text-[10px] text-[#8b949e]">· {lines.length} lines</span>
               )}
@@ -276,6 +293,14 @@ export default function FileExplorer({ runId }) {
             ) : isOneForAllCsv ? (
               <div className="flex-1 overflow-auto">
                 <OneForAllCsvView content={content} />
+              </div>
+            ) : isSubdomainTxt ? (
+              <div className="flex-1 overflow-auto">
+                <SubdomainListView content={content} filename={name} />
+              </div>
+            ) : isUrlTxt ? (
+              <div className="flex-1 overflow-auto">
+                <UrlListView content={content} />
               </div>
             ) : isSpecialText ? (
               <div className="flex-1 overflow-auto">
@@ -997,6 +1022,211 @@ function OneForAllCsvView({ content }) {
         {!filtered.length && (
           <div className="px-6 py-8 text-[#484f58] text-[11px] text-center">No matching subdomains.</div>
         )}
+      </div>
+    </div>
+  )
+}
+
+/* ─── SubdomainListView ────────────────────────────────────── */
+// Clean one-per-line subdomain list files (p_subfinder.txt, passive_merged.txt, etc.)
+// SOURCE_MAP maps filename stem → readable source label + color
+const SOURCE_MAP = {
+  p_subfinder:     { label: 'subfinder',      color: '#58a6ff' },
+  p_assetfinder:   { label: 'assetfinder',    color: '#79c0ff' },
+  p_findomain:     { label: 'findomain',      color: '#3fb950' },
+  p_amass:         { label: 'amass',          color: '#d29922' },
+  p_chaos:         { label: 'chaos',          color: '#f85149' },
+  p_oneforall:     { label: 'oneforall',      color: '#bc8cff' },
+  p_cero:          { label: 'cero (CT)',      color: '#58a6ff' },
+  p_uncover:       { label: 'uncover',        color: '#d29922' },
+  p_gau_subs:      { label: 'gau (subs)',     color: '#8b949e' },
+  p_waymore_subs:  { label: 'waymore (subs)', color: '#8b949e' },
+  p_urlfinder_subs:{ label: 'urlfinder',      color: '#8b949e' },
+  p_waybackurls_subs:{ label: 'wayback',      color: '#8b949e' },
+  p_crtsh:         { label: 'crt.sh',         color: '#79c0ff' },
+  p_certspotter:   { label: 'certspotter',    color: '#79c0ff' },
+  p_hackertarget:  { label: 'hackertarget',   color: '#3fb950' },
+  p_alienvault:    { label: 'alienvault',     color: '#f0b429' },
+  p_rapiddns:      { label: 'rapiddns',       color: '#58a6ff' },
+  p_gauplus_subs:  { label: 'gauplus',        color: '#8b949e' },
+  p_urlscan:       { label: 'urlscan',        color: '#58a6ff' },
+  p_github_code:   { label: 'github',         color: '#e6edf3' },
+  p_securitytrails:{ label: 'securitytrails', color: '#f85149' },
+  p_virustotal:    { label: 'virustotal',     color: '#f0b429' },
+  p_bevigil:       { label: 'bevigil',        color: '#bc8cff' },
+  p_shosubgo:      { label: 'shosubgo',       color: '#d29922' },
+  p_threatcrowd:   { label: 'threatcrowd',    color: '#f85149' },
+  p_sublist3r:     { label: 'sublist3r',      color: '#3fb950' },
+  passive_merged:  { label: '★ merged',       color: '#3fb950' },
+  a_puredns:       { label: 'puredns',        color: '#f0b429' },
+  a_shuffledns:    { label: 'shuffledns',     color: '#d29922' },
+  axfr_subs:       { label: 'AXFR',           color: '#f85149' },
+  perm_alterx:     { label: 'alterx',         color: '#bc8cff' },
+  perm_dnsgen:     { label: 'dnsgen',         color: '#bc8cff' },
+}
+
+function SubdomainListView({ content, filename }) {
+  const [q, setQ] = React.useState('')
+  const [copyDone, setCopyDone] = React.useState(false)
+
+  const stem = filename.replace(/\.[^.]+$/, '').toLowerCase()
+  const src = SOURCE_MAP[stem] || { label: stem, color: '#8b949e' }
+
+  const rawLines = useMemo(
+    () => content.trim().split('\n').filter(Boolean),
+    [content]
+  )
+  const filtered = useMemo(() => {
+    if (!q) return rawLines
+    const lq = q.toLowerCase()
+    return rawLines.filter(l => l.toLowerCase().includes(lq))
+  }, [rawLines, q])
+
+  const copyAll = () => {
+    navigator.clipboard.writeText(filtered.join('\n')).then(() => {
+      setCopyDone(true); setTimeout(() => setCopyDone(false), 1500)
+    })
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* toolbar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-[#21262d] bg-[#161b22] flex-shrink-0">
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono"
+          style={{ color: src.color, background: `${src.color}22`, border: `1px solid ${src.color}44` }}>
+          {src.label}
+        </span>
+        <input
+          className="bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-[11px] text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#388bfd] w-56"
+          placeholder="Filter subdomains…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
+        <span className="text-[10px] text-[#484f58] tabular-nums">
+          {q ? `${filtered.length} / ` : ''}{rawLines.length} subdomains
+        </span>
+        <button onClick={copyAll}
+          className="ml-auto text-[10px] text-[#484f58] hover:text-[#8b949e] transition-colors px-2 py-1 rounded border border-[#30363d] hover:border-[#484f58]">
+          {copyDone ? '✓ copied' : '⎘ copy all'}
+        </button>
+      </div>
+      {/* list */}
+      {filtered.length === 0
+        ? <Empty>{q ? 'No matching subdomains.' : 'Empty file.'}</Empty>
+        : (
+          <div className="flex-1 overflow-auto bg-[#0d1117]">
+            <table className="w-full text-[11px] border-collapse">
+              <tbody>
+                {filtered.map((line, i) => (
+                  <tr key={i} className="border-b border-[#161b22] hover:bg-[#161b22] group">
+                    <td className="select-none text-right pr-3 pl-3 py-[3px] text-[#484f58] text-[10px] tabular-nums w-12 border-r border-[#21262d] shrink-0">
+                      {i + 1}
+                    </td>
+                    <td className="pl-4 pr-2 py-[3px] font-mono text-[#e6edf3]">
+                      {line}
+                    </td>
+                    <td className="pr-3 py-[3px] text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                      <a href={`https://${line}`} target="_blank" rel="noreferrer"
+                        className="text-[10px] text-[#484f58] hover:text-[#58a6ff]">↗</a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      }
+    </div>
+  )
+}
+
+/* ─── UrlListView ──────────────────────────────────────────── */
+// Rendered for URL collection files: gau, waymore, urlfinder, waybackurls, etc.
+function UrlListView({ content }) {
+  const [q, setQ] = React.useState('')
+  const [groupBy, setGroupBy] = React.useState(false)
+
+  const rawUrls = useMemo(
+    () => content.trim().split('\n').filter(Boolean),
+    [content]
+  )
+
+  const filtered = useMemo(() => {
+    if (!q) return rawUrls
+    const lq = q.toLowerCase()
+    return rawUrls.filter(u => u.toLowerCase().includes(lq))
+  }, [rawUrls, q])
+
+  // Group by domain
+  const grouped = useMemo(() => {
+    if (!groupBy) return null
+    const map = {}
+    filtered.forEach(url => {
+      try {
+        const domain = new URL(url.startsWith('http') ? url : `https://${url}`).hostname
+        ;(map[domain] = map[domain] || []).push(url)
+      } catch {
+        (map['(invalid)'] = map['(invalid)'] || []).push(url)
+      }
+    })
+    return Object.entries(map).sort((a, b) => b[1].length - a[1].length)
+  }, [filtered, groupBy])
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* toolbar */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-[#21262d] bg-[#161b22] flex-shrink-0">
+        <input
+          className="bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-[11px] text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#388bfd] w-56"
+          placeholder="Filter URLs…"
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
+        <label className="flex items-center gap-1.5 text-[11px] text-[#8b949e] cursor-pointer select-none">
+          <input type="checkbox" checked={groupBy} onChange={e => setGroupBy(e.target.checked)} className="accent-[#58a6ff]" />
+          Group by domain
+        </label>
+        <span className="ml-auto text-[10px] text-[#484f58] tabular-nums">
+          {q ? `${filtered.length} / ` : ''}{rawUrls.length} URLs
+        </span>
+      </div>
+      {/* list */}
+      <div className="flex-1 overflow-auto bg-[#0d1117]">
+        {filtered.length === 0
+          ? <Empty>{q ? 'No matching URLs.' : 'Empty file.'}</Empty>
+          : grouped
+            ? grouped.map(([domain, urls]) => (
+                <div key={domain}>
+                  <div className="px-4 py-1.5 text-[10px] font-bold text-[#484f58] bg-[#161b22] border-b border-[#21262d] sticky top-0 z-10 flex items-center gap-2">
+                    <span className="font-mono text-[#8b949e]">{domain}</span>
+                    <span className="text-[#30363d]">·</span>
+                    <span className="text-[#484f58]">{urls.length} URLs</span>
+                  </div>
+                  {urls.map((url, i) => (
+                    <div key={i} className="flex items-start px-4 py-[3px] border-b border-[#161b22] hover:bg-[#161b22] group">
+                      <span className="select-none text-[#484f58] text-[10px] tabular-nums w-8 shrink-0 pt-px">{i + 1}</span>
+                      <a href={url} target="_blank" rel="noreferrer"
+                        className="font-mono text-[10px] text-[#58a6ff] hover:underline break-all flex-1">{url}</a>
+                    </div>
+                  ))}
+                </div>
+              ))
+            : (
+              <table className="w-full text-[11px] border-collapse">
+                <tbody>
+                  {filtered.map((url, i) => (
+                    <tr key={i} className="border-b border-[#161b22] hover:bg-[#161b22]">
+                      <td className="select-none text-right pr-3 pl-3 py-[3px] text-[#484f58] text-[10px] tabular-nums w-12 border-r border-[#21262d] shrink-0">{i + 1}</td>
+                      <td className="pl-4 pr-3 py-[3px]">
+                        <a href={url} target="_blank" rel="noreferrer"
+                          className="font-mono text-[10px] text-[#58a6ff] hover:underline break-all">{url}</a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )
+        }
       </div>
     </div>
   )
