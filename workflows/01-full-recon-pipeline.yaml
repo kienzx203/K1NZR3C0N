@@ -306,9 +306,10 @@ steps:
   skip_if_exists: true
   timeout: 10m
   run: |
-    # archive.org (207.241.237.3) is TCP-unreachable in this container AND blocks Tor exit nodes.
-    # waybackurls has no --timeout flag and hangs; skip to avoid blocking the workflow.
-    # URL archive coverage comes from: gau (urlscan+commoncrawl+otx), waymore, urlfinder.
+    echo {target} | timeout 90 waybackurls 2>/dev/null \
+      | tee {workspace}/p_waybackurls_urls.txt \
+      | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
+      | sort -u > {workspace}/p_waybackurls_subs.txt || true
     touch {workspace}/p_waybackurls_subs.txt {workspace}/p_waybackurls_urls.txt
   outputs:
     subs: '{workspace}/p_waybackurls_subs.txt'
@@ -321,9 +322,7 @@ steps:
   skip_if_exists: true
   timeout: 10m
   run: |
-    # archive.org blocks Tor exit nodes; gau only supports http:// proxy (not socks5h://).
-    # Use reliable providers only: urlscan, commoncrawl, otx.
-    gau --subs {target} --threads 5 --timeout 30 --providers urlscan,commoncrawl,otx 2>/dev/null \
+    gau --subs {target} --threads 5 --timeout 30 2>/dev/null \
       | tee {workspace}/p_gau_urls.txt \
       | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
       | sort -u > {workspace}/p_gau_subs.txt || true
@@ -338,7 +337,7 @@ steps:
   optional: true
   skip_if_exists: true
   timeout: 15m
-  run: waymore -i {target} -mode U -oU {workspace}/p_waymore_urls.txt --providers otx,urlscan,commoncrawl -t 60 2>/dev/null || true; test -f {workspace}/p_waymore_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_waymore_urls.txt | sort -u > {workspace}/p_waymore_subs.txt || true; touch {workspace}/p_waymore_subs.txt {workspace}/p_waymore_urls.txt
+  run: waymore -i {target} -mode U -oU {workspace}/p_waymore_urls.txt -t 120 2>/dev/null || true; test -f {workspace}/p_waymore_urls.txt && grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' {workspace}/p_waymore_urls.txt | sort -u > {workspace}/p_waymore_subs.txt || true; touch {workspace}/p_waymore_subs.txt {workspace}/p_waymore_urls.txt
   outputs:
     subs: '{workspace}/p_waymore_subs.txt'
     urls: '{workspace}/p_waymore_urls.txt'
@@ -460,7 +459,7 @@ steps:
   skip_if_exists: true
   timeout: 10m
   run: |
-    gauplus --subs {target} -t 10 --timeout 30 -providers "otx,commoncrawl" 2>/dev/null \
+    gauplus --subs {target} -t 10 --timeout 30 2>/dev/null \
       | grep -oP '(?:https?://)\K[a-zA-Z0-9._-]+\.{target}(?=[/?#]|$)' \
       | sort -u > {workspace}/p_gauplus_subs.txt || true
     touch {workspace}/p_gauplus_subs.txt

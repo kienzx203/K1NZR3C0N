@@ -43,7 +43,7 @@ steps:
     skip_if_exists: true
     optional: true
     when: '{vars.run_gau}'
-    run: 'DOMAIN=$(echo ''{target}'' | sed ''s|https\?://||'' | cut -d/ -f1 | cut -d: -f1); gau "$DOMAIN" --subs --threads 5 --timeout 30 --providers urlscan,commoncrawl,otx 2>/dev/null | sort -u > {workspace}/gau_urls.txt || true; touch {workspace}/gau_urls.txt; printf ''gau          : %s URLs\n'' "$(wc -l < {workspace}/gau_urls.txt)" >> {workspace}/stats.txt'
+    run: 'DOMAIN=$(echo ''{target}'' | sed ''s|https\?://||'' | cut -d/ -f1 | cut -d: -f1); gau "$DOMAIN" --subs --threads 5 --timeout 30 2>/dev/null | sort -u > {workspace}/gau_urls.txt || true; touch {workspace}/gau_urls.txt; printf ''gau          : %s URLs\n'' "$(wc -l < {workspace}/gau_urls.txt)" >> {workspace}/stats.txt'
     outputs:
       urls: '{workspace}/gau_urls.txt'
   - id: fallparams_run
