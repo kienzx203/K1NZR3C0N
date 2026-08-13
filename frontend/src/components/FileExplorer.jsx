@@ -909,24 +909,45 @@ function Empty({ children }) {
 /* ─── OneForAllCsvView ─────────────────────────────────────── */
 // Renders the OneForAll result CSV: id,alive,request,resolve,url,subdomain,level,
 //   cname,ip,public,cdn,port,status,reason,title,banner,cidr,asn,org,addr,isp,source
+//
+// Format: RFC 4180 double-quote CSV. Inside a quoted field, "" = literal ".
+function parseOneForAllCsvLine(line) {
+  const fields = []
+  let i = 0
+  while (i <= line.length) {
+    if (i === line.length) { fields.push(''); break }
+    if (line[i] === '"') {
+      // Quoted field
+      let cur = ''; i++
+      while (i < line.length) {
+        if (line[i] === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i += 2 } // "" → "
+          else { i++; break }                              // closing quote
+        } else {
+          cur += line[i++]
+        }
+      }
+      fields.push(cur)
+      if (line[i] === ',') i++ // skip comma after closing quote
+    } else {
+      // Unquoted field — read until next comma
+      const end = line.indexOf(',', i)
+      if (end === -1) { fields.push(line.slice(i)); break }
+      fields.push(line.slice(i, end))
+      i = end + 1
+    }
+  }
+  return fields
+}
+
 function parseOneForAllCsv(content) {
   const rawLines = content.trim().split('\n').filter(Boolean)
   if (rawLines.length < 2) return { headers: [], rows: [] }
-  const headers = rawLines[0].split(',')
+  const headers = rawLines[0].split(',').map(h => h.trim())
   const rows = rawLines.slice(1).map(line => {
-    // CSV has quoted fields that may contain commas — do a simple state-machine parse
-    const fields = []
-    let cur = '', inQ = false
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i]
-      if (c === "'" && !inQ) { inQ = true; continue }
-      if (c === "'" && inQ)  { inQ = false; continue }
-      if (c === ',' && !inQ) { fields.push(cur); cur = ''; continue }
-      cur += c
-    }
-    fields.push(cur)
+    const fields = parseOneForAllCsvLine(line)
     const obj = {}
-    headers.forEach((h, i) => { obj[h.trim()] = (fields[i] || '').trim() })
+    headers.forEach((h, i) => { obj[h] = (fields[i] || '').trim() })
     return obj
   })
   return { headers, rows }
@@ -973,7 +994,7 @@ function OneForAllCsvView({ content }) {
         <table className="w-full text-[11px] border-collapse min-w-[900px]">
           <thead className="sticky top-0 z-10 bg-[#161b22]">
             <tr className="border-b border-[#30363d]">
-              {['Subdomain','IP','Port','Status','CDN','Title','Source'].map(h => (
+              {['Subdomain','IP (first)','Port','Status','CDN','Title','Source'].map(h => (
                 <th key={h} className="px-3 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-[#484f58] whitespace-nowrap">{h}</th>
               ))}
             </tr>
@@ -982,38 +1003,54 @@ function OneForAllCsvView({ content }) {
             {filtered.map((r, i) => {
               const alive = r.alive === '1'
               const cdn   = r.cdn   === '1'
-              const sc    = parseInt(r.status) || 0
-              const color = sc >= 200 && sc < 300 ? '#3fb950'
-                          : sc >= 300 && sc < 400 ? '#d29922'
-                          : sc >= 400 && sc < 500 ? '#f85149'
-                          : sc >= 500 ? '#ff6e6e' : '#484f58'
+              // ip field may be comma-separated list → take first
+              const ip    = (r.ip || '').split(',')[0].trim().replace(/^[*"']+|[*"']+$/g, '')
+              // status: must be a 3-digit HTTP code; OneForAll sometimes puts reason here
+              const sc    = parseInt(r.status)
+              const validSc = sc >= 100 && sc < 600 ? sc : 0
+              const color = validSc >= 200 && validSc < 300 ? '#3fb950'
+                          : validSc >= 300 && validSc < 400 ? '#d29922'
+                          : validSc >= 400 && validSc < 500 ? '#f85149'
+                          : validSc >= 500 ? '#ff6e6e' : '#484f58'
+              // title: strip escape chars
+              const title = (r.title || '').replace(/\\n/g, '').trim()
+              // source: last field — clean up
+              const source = (r.source || '').replace(/['"]/g, '').trim()
               return (
                 <tr key={i} className="border-b border-[#21262d] hover:bg-[#161b22]">
                   {/* Subdomain */}
                   <td className="px-3 py-1.5 font-mono text-[10px]">
-                    <span style={{ color: alive ? '#e6edf3' : '#484f58' }}>{r.subdomain || '—'}</span>
+                    <a href={`https://${r.subdomain}`} target="_blank" rel="noreferrer"
+                      style={{ color: alive ? '#58a6ff' : '#484f58' }}
+                      className="hover:underline">
+                      {r.subdomain || '—'}
+                    </a>
                     {!alive && <span className="ml-1.5 text-[9px] text-[#484f58]">(dead)</span>}
                   </td>
-                  {/* IP */}
-                  <td className="px-3 py-1.5 font-mono text-[10px] text-[#8b949e] whitespace-nowrap">{r.ip || '—'}</td>
+                  {/* IP — first from comma-list */}
+                  <td className="px-3 py-1.5 font-mono text-[10px] text-[#8b949e] whitespace-nowrap">
+                    {ip || '—'}
+                  </td>
                   {/* Port */}
-                  <td className="px-3 py-1.5 text-[10px] text-[#8b949e] tabular-nums">{r.port || '—'}</td>
+                  <td className="px-3 py-1.5 text-[10px] text-[#8b949e] tabular-nums whitespace-nowrap">{r.port || '—'}</td>
                   {/* Status */}
-                  <td className="px-3 py-1.5">
-                    {sc ? (
-                      <StatusBadge code={sc} color={color} />
-                    ) : <span className="text-[#484f58] text-[10px]">—</span>}
+                  <td className="px-3 py-1.5 whitespace-nowrap">
+                    {validSc
+                      ? <StatusBadge code={validSc} color={color} />
+                      : <span className="text-[#484f58] text-[10px]">—</span>}
                   </td>
                   {/* CDN */}
-                  <td className="px-3 py-1.5 text-[10px]">
+                  <td className="px-3 py-1.5 text-[10px] whitespace-nowrap">
                     {cdn
                       ? <span className="text-[#d29922] bg-[#d2992222] border border-[#d2992244] rounded px-1.5 py-0.5 font-mono text-[9px]">CDN</span>
                       : <span className="text-[#484f58]">—</span>}
                   </td>
                   {/* Title */}
-                  <td className="px-3 py-1.5 text-[10px] text-[#8b949e] max-w-[260px] truncate" title={r.title}>{r.title || '—'}</td>
+                  <td className="px-3 py-1.5 text-[10px] text-[#8b949e] max-w-[280px] truncate" title={title}>
+                    {title || '—'}
+                  </td>
                   {/* Source */}
-                  <td className="px-3 py-1.5 text-[10px] text-[#484f58]">{r.source || '—'}</td>
+                  <td className="px-3 py-1.5 text-[10px] text-[#484f58] whitespace-nowrap">{source || '—'}</td>
                 </tr>
               )
             })}
