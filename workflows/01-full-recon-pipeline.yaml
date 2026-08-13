@@ -1663,7 +1663,9 @@ steps:
   shell: true
   run: |
     (
+      # Resolved subdomains (primary source)
       cat {workspace}/subdomains_all_resolved.txt 2>/dev/null || true
+      # naabu port scan results — specific web ports
       if test -f {workspace}/naabu.jsonl; then
         jq -r 'select(.port and (.port==80 or .port==443 or .port==8080 or .port==8443 or .port==8888 or .port==9090 or .port==9443 or .port==3000 or .port==5000 or .port==4443)) | "\(.host // .ip)"' \
           {workspace}/naabu.jsonl 2>/dev/null || true
@@ -1671,6 +1673,12 @@ steps:
           | grep -E ':(80|443|8080|8443|8888|9090|9443|3000|5000|4443)$' || true
       fi
     ) | sort -u > {workspace}/web_targets.txt
+    # Fallback: if nothing resolved, always probe the root target itself
+    if ! test -s {workspace}/web_targets.txt; then
+      printf '%s\nwww.%s\n' '{target}' '{target}' > {workspace}/web_targets.txt
+      printf '[extract_web_targets] no resolved hosts — falling back to root target\n'
+    fi
+    printf 'web_targets: %s entries\n' "$(wc -l < {workspace}/web_targets.txt)"
   outputs:
     web_targets: '{workspace}/web_targets.txt'
 - id: httpx
@@ -1680,13 +1688,20 @@ steps:
   run_on_failed_deps: true
   timeout: 60m
   skip_if_exists: true
-  run: httpx -l {steps.extract_web_targets.web_targets} -silent -json -o {workspace}/httpx.jsonl -td -title -status-code -content-length -follow-redirects -timeout {vars.httpx_timeout} -threads {vars.httpx_threads} -random-agent
+  shell: true
+  run: |
+    httpx -l {workspace}/web_targets.txt \
+      -silent -json -o {workspace}/httpx.jsonl \
+      -td -title -status-code -content-length \
+      -follow-redirects \
+      -timeout {vars.httpx_timeout} \
+      -threads {vars.httpx_threads} \
+      -random-agent 2>/dev/null || true
+    touch {workspace}/httpx.jsonl
+    printf 'httpx live hosts: %s\n' "$(wc -l < {workspace}/httpx.jsonl)"
   outputs:
     httpx_jsonl: '{workspace}/httpx.jsonl'
     alive_file: '{workspace}/httpx.jsonl'
-  requires:
-  - path: '{workspace}/httpx.jsonl'
-    min_bytes: 1
 - id: extract_live_urls
   name: extract live URLs from httpx → for crawl + vuln scan input
   depends_on:
