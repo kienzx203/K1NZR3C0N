@@ -11,6 +11,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..config import REDIS_URL, STATIC_DIR
+
+# Resolve the static dir: prefer the directory that sits alongside this
+# package (src/k1nzr3c0n/static/) so the UI always works regardless of
+# whether K1NZR3C0N_BASE is set correctly.  Fall back to STATIC_DIR for
+# backwards compatibility with custom deployments.
+_PACKAGE_STATIC = Path(__file__).resolve().parent.parent / "static"
+_STATIC_DIR = _PACKAGE_STATIC if _PACKAGE_STATIC.exists() else STATIC_DIR
 from ..db import RunLog, init_db, db_get
 from .routes import assets, files, findings, keys, opencode, reports, runs, terminal, tools, upload, workflows
 
@@ -105,12 +112,12 @@ async def ws_run_logs(websocket: WebSocket, run_id: str):
 
 # ── Serve React SPA ────────────────────────────────────────────────────────────
 
-if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="assets")
+if _STATIC_DIR.exists():
+    app.mount("/assets", StaticFiles(directory=str(_STATIC_DIR / "assets")), name="assets")
 
     @app.get("/{full_path:path}")
     async def spa_fallback(full_path: str):
-        index = STATIC_DIR / "index.html"
+        index = _STATIC_DIR / "index.html"
         return FileResponse(
             str(index),
             headers={

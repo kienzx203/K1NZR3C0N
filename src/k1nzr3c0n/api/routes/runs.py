@@ -107,12 +107,14 @@ def list_runs(
 
 @router.get("/runs/stats")
 def run_stats(db: Session = Depends(get_db_dep)) -> dict[str, Any]:
+    # SQLAlchemy 1.x compat: case([(condition, value)], else_=...)
+    # SQLAlchemy 2.x also accepts this form (it's just deprecated, not removed)
     row = db.query(
         func.count(Run.id).label("total"),
-        func.sum(case((Run.status == "queued", 1), else_=0)).label("queued"),
-        func.sum(case((Run.status == "running", 1), else_=0)).label("running"),
-        func.sum(case((Run.status == "completed", 1), else_=0)).label("completed"),
-        func.sum(case((Run.status == "failed", 1), else_=0)).label("failed"),
+        func.sum(case([(Run.status == "queued",    1)], else_=0)).label("queued"),
+        func.sum(case([(Run.status == "running",   1)], else_=0)).label("running"),
+        func.sum(case([(Run.status == "completed", 1)], else_=0)).label("completed"),
+        func.sum(case([(Run.status == "failed",    1)], else_=0)).label("failed"),
     ).one()
 
     total_findings = db.query(func.count(Finding.id)).scalar() or 0
