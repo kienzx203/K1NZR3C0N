@@ -6,7 +6,7 @@ Output: one subdomain per line to stdout
 
 Handles:
   - AWS CGNAT IPs (100.x.x.x) filtered out before connect
-  - Intermittent Docker/WSL2 network flapping → retries up to 5 times
+  - Transient network errors → retries with delay
   - TLS handshake timeouts → tries each routable IP in turn
 """
 import sys
@@ -18,9 +18,9 @@ import time
 
 HOSTNAME    = "api.securitytrails.com"
 PORT        = 443
-RETRIES     = 10   # more attempts to survive transient Docker/WSL2 network flaps
-RETRY_DELAY = 5    # seconds between attempts
-IP_TIMEOUT  = 5    # per-IP connect+TLS timeout (fast fail — good IPs connect in <1s)
+RETRIES     = 5    # retries on transient network failure (VMware NAT can be intermittent)
+RETRY_DELAY = 8    # seconds between attempts — give NAT time to recover
+IP_TIMEOUT  = 8    # per-IP connect+TLS timeout
 
 
 def _routable_ips() -> list:
@@ -51,12 +51,34 @@ class _DirectHTTPS(http.client.HTTPSConnection):
         self.sock = ctx.wrap_socket(sock, server_hostname=self.host)
 
 
+def _try_curl(api_key: str, domain: str) -> list | None:
+    """Fallback: use curl subprocess (has its own resolver, more resilient under NAT stress)."""
+    import subprocess
+    url = f"https://{HOSTNAME}/v1/domain/{domain}/subdomains?children_only=false&include_inactive=true"
+    try:
+        result = subprocess.run(
+            ["curl", "-sS", "--max-time", str(IP_TIMEOUT * 2),
+             "-H", f"apikey: {api_key}",
+             "-H", "Accept: application/json",
+             url],
+            capture_output=True, text=True, timeout=IP_TIMEOUT * 3
+        )
+        if result.returncode != 0:
+            sys.stderr.write(f"[securitytrails] curl failed: {result.stderr.strip()}\n")
+            return None
+        data = json.loads(result.stdout)
+        return data.get("subdomains", [])
+    except Exception as exc:
+        sys.stderr.write(f"[securitytrails] curl fallback failed: {exc}\n")
+        return None
+
+
 def _try_once(api_key: str, domain: str) -> list | None:
     """One attempt: re-resolve DNS, try each IP. Returns list or None on full failure."""
     ips = _routable_ips()
     if not ips:
-        sys.stderr.write(f"[securitytrails] DNS failed for {HOSTNAME}\n")
-        return None
+        sys.stderr.write(f"[securitytrails] DNS failed for {HOSTNAME} — trying curl fallback\n")
+        return _try_curl(api_key, domain)
 
     path = f"/v1/domain/{domain}/subdomains?children_only=false&include_inactive=true"
     headers = {"apikey": api_key, "Accept": "application/json"}
@@ -82,7 +104,9 @@ def _try_once(api_key: str, domain: str) -> list | None:
             sys.stderr.write(f"[securitytrails] {ip} failed: {exc}\n")
             continue
 
-    return None   # all IPs failed
+    # All direct IPs failed — try curl as last resort
+    sys.stderr.write(f"[securitytrails] all direct IPs failed — trying curl fallback\n")
+    return _try_curl(api_key, domain)
 
 
 def main():
