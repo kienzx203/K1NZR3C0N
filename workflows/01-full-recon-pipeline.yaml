@@ -218,7 +218,7 @@ steps:
   shell: true
   optional: true
   skip_if_exists: true
-  timeout: 30m
+  timeout: 5m
   run: amass enum -passive -d {target} -silent -o {workspace}/p_amass.txt 2>/dev/null; touch {workspace}/p_amass.txt
   outputs:
     file: '{workspace}/p_amass.txt'
@@ -1001,7 +1001,7 @@ steps:
     run: |
       # puredns: best wildcard filtering + mass DNS resolver support
       RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || printf '1.1.1.1\n8.8.8.8\n')
-      puredns bruteforce {vars.sub_wordlist_full} {target} \
+      cat {vars.sub_wordlist_full} | puredns bruteforce {target} \
         --resolvers "$RFILE" \
         --wildcard-tests 10 \
         --wildcard-batch 1000000 \
@@ -1226,7 +1226,7 @@ steps:
         printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' \
         > {workspace}/resolvers_fallback.txt && echo {workspace}/resolvers_fallback.txt)
 
-      puredns bruteforce {workspace}/target_custom_wordlist.txt {target} \
+      cat {workspace}/target_custom_wordlist.txt | puredns bruteforce {target} \
         --resolvers "$RFILE" \
         --wildcard-tests 10 \
         --wildcard-batch 1000000 \
