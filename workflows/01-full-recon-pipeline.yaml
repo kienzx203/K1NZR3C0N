@@ -862,9 +862,10 @@ steps:
     touch {workspace}/p_recursive.txt
     test -s {workspace}/passive_merged.txt || exit 0
     # Extract unique 2nd-level subdomains (e.g., cloud.target.com → enumerate *.cloud.target.com)
-    # Find hosts with 3+ labels that could be wildcard parents
+    # Find hosts with 3+ labels that could be wildcard parents.
+    # Strip first label only (sed) so it works for any TLD depth (2-label: foo.com, 3-label: foo.com.vn)
     grep -oP '^[^.]+\.[^.]+\.{target}$' {workspace}/passive_merged.txt 2>/dev/null \
-      | awk -F. '{print $2"."$3"."$4}' | sort -u \
+      | sed 's/^[^.]*\.//' | sort -u \
       | head -50 > {workspace}/recursive_parents.txt || true
     touch {workspace}/recursive_parents.txt
     if test -s {workspace}/recursive_parents.txt; then
@@ -2368,7 +2369,7 @@ steps:
     AXFR_SUBS=$(wc -l < {workspace}/axfr_subs.txt 2>/dev/null || echo 0)
     PERM_GOTATOR=$(wc -l < {workspace}/perm_gotator.txt 2>/dev/null || echo 0)
     MASSDNS_SUBS=$(wc -l < {workspace}/a_massdns.txt 2>/dev/null || echo 0)
-    CDN_HOSTS=$(jq -r 'select(.cdn==true) | .host' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
+    CDN_HOSTS=$(jq -r 'select(.cdn==true or .waf==true or .cloud==true) | .input' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
     ORIGIN_HOSTS=$(jq -r 'select(.cdn != true and .waf != true and .cloud != true) | .input' \
       {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
     SHARED_HOSTING_IPS=$(wc -l < {workspace}/ip_groups/shared_hosting.txt 2>/dev/null || echo 0)
