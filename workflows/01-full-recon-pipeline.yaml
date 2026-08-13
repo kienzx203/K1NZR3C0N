@@ -1632,7 +1632,18 @@ steps:
   fanout:
   - id: rustscan_full
     shell: true
-    run: rustscan -a {target} --range 1-65535 --scan-order random --batch-size {vars.rustscan_batch} --timeout {vars.rustscan_timeout_ms} --tries 2 --ulimit 5000 -- -Pn -sV -sC --open -oN {workspace}/rustscan_full.txt 2>/dev/null; touch {workspace}/rustscan_full.txt
+    run: |
+      # Use all resolved subdomains if available; fallback to root target
+      INPUT=$(test -s {workspace}/subdomains_all_resolved.txt \
+        && echo {workspace}/subdomains_all_resolved.txt \
+        || echo {target})
+      rustscan -a "$INPUT" \
+        --range 1-65535 --scan-order random \
+        --batch-size {vars.rustscan_batch} \
+        --timeout {vars.rustscan_timeout_ms} \
+        --tries 2 --ulimit 5000 \
+        -- -Pn -sV -sC --open -oN {workspace}/rustscan_full.txt 2>/dev/null || true
+      touch {workspace}/rustscan_full.txt
     outputs:
       file: '{workspace}/rustscan_full.txt'
     optional: true
