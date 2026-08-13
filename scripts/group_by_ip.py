@@ -2,13 +2,17 @@
 """Group resolved hosts by IP from dnsx `-resp` output.
 
 Input format (dnsx -a -aaaa -cname -resp): lines like
-    sub.target.com [1.2.3.4]
-    sub.target.com [cname.example.com,1.2.3.4]
+    sub.target.com [A] [1.2.3.4]
+    sub.target.com [CNAME] [cname.example.com]
+    sub.target.com [AAAA] [2001:db8::1]
+
+Also handles ANSI color codes produced by dnsx when writing to file:
+    sub.target.com [\x1b[35mA\x1b[0m] [\x1b[32m1.2.3.4\x1b[0m]
 
 Writes three files under --output-dir:
     unique_ips.txt     one IPv4 per line, sorted
     ip_to_hosts.json   {ip: [hosts...]}
-    shared_hosting.txt IPs with >1 distinct host, tab-separated "ip\\thost1,host2,..."
+    shared_hosting.txt IPs with >1 distinct host, tab-separated "ip\thost1,host2,..."
 """
 from __future__ import annotations
 
@@ -17,29 +21,52 @@ import json
 import re
 from pathlib import Path
 
-_LINE_RE = re.compile(r'^([^\s\[]+)\s*\[([^\]]+)\]')
-_IPV4_RE = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
+# Strip ANSI escape codes (e.g. \x1b[35m, \x1b[0m)
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mKHJA-Z]')
+# Match first token (hostname) before any whitespace or bracket
+_HOST_RE = re.compile(r'^([^\s\[]+)')
+# Match any IPv4 address in the line
+_IPV4_RE = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
 
 
 def parse_resp_file(path: Path) -> dict[str, set[str]]:
-    """Return {ip: {hosts pointing to it}}."""
+    """Return {ip: {hosts pointing to it}}.
+
+    Handles dnsx output formats:
+    - With ANSI color codes (written via -o flag)
+    - Two-bracket format: hostname [TYPE] [IP]
+    - Single-bracket format: hostname [IP]  (legacy)
+    """
     ip_to_hosts: dict[str, set[str]] = {}
     for raw in path.read_text(encoding='utf-8', errors='ignore').splitlines():
-        m = _LINE_RE.match(raw.strip())
-        if not m:
+        # Strip ANSI escape sequences first
+        line = _ANSI_RE.sub('', raw.strip())
+        if not line:
             continue
-        host, bracket = m.group(1).strip().lower(), m.group(2)
-        for part in bracket.split(','):
-            ip = part.strip()
-            if _IPV4_RE.match(ip):
-                ip_to_hosts.setdefault(ip, set()).add(host)
+        # Extract hostname (first token before any space or bracket)
+        hm = _HOST_RE.match(line)
+        if not hm:
+            continue
+        host = hm.group(1).lower()
+        # Skip lines that look like IPs themselves (reverse DNS output etc)
+        if _IPV4_RE.fullmatch(host):
+            continue
+        # Find ALL IPv4 addresses anywhere in the rest of the line
+        for ip in _IPV4_RE.findall(line[len(host):]):
+            ip_to_hosts.setdefault(ip, set()).add(host)
     return ip_to_hosts
 
 
 def write_outputs(ip_to_hosts: dict[str, set[str]], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    unique_ips = sorted(ip_to_hosts, key=lambda ip: tuple(int(x) for x in ip.split('.')))
+    def ip_sort_key(ip: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(x) for x in ip.split('.'))
+        except ValueError:
+            return (0, 0, 0, 0)
+
+    unique_ips = sorted(ip_to_hosts, key=ip_sort_key)
     (output_dir / 'unique_ips.txt').write_text(
         '\n'.join(unique_ips) + ('\n' if unique_ips else ''), encoding='utf-8'
     )

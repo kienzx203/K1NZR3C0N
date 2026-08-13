@@ -2008,7 +2008,8 @@ steps:
     touch {workspace}/origin_ips.txt
     test -s {workspace}/origin_hosts.txt || exit 0
     # For each non-CDN host, look up its IP from the resp file
-    sed 's/^/^/; s/$/ \[/' {workspace}/origin_hosts.txt > {workspace}/.origin_host_patterns.txt
+    # Escape dots in hostname for grep regex, then match [IP] bracket
+    sed 's/\./\\./g; s/^/^/; s/$/ /' {workspace}/origin_hosts.txt > {workspace}/.origin_host_patterns.txt
     grep -E -f {workspace}/.origin_host_patterns.txt {workspace}/subdomains_resolved_resp.txt 2>/dev/null \
       | grep -oE '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | sort -u > {workspace}/origin_ips.txt || true
     touch {workspace}/origin_ips.txt
@@ -2074,8 +2075,11 @@ steps:
     skip_if_exists: true
     timeout: 10m
     run: |
-      # hakrawler: recursive crawl — catches URLs katana misses via JS rendering failures
-      echo "https://{target}" | hakrawler -d 4 -subs -insecure 2>/dev/null \
+      # hakrawler: crawl ALL live HTTP endpoints (not just root domain)
+      touch {workspace}/hakrawler_urls.txt
+      test -s {workspace}/live_urls.txt || exit 0
+      cat {workspace}/live_urls.txt \
+        | hakrawler -d 3 -subs -insecure 2>/dev/null \
         | sort -u > {workspace}/hakrawler_urls.txt || true
       touch {workspace}/hakrawler_urls.txt
       printf 'hakrawler URLs: %s\n' "$(wc -l < {workspace}/hakrawler_urls.txt)"
