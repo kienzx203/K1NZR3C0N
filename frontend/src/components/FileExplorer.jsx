@@ -88,9 +88,10 @@ function parseJsonFindings(content, ext) {
   return []
 }
 
+// Unified severity palette (matches components/SevBadge.jsx)
 const SEV_COLOR = {
-  critical: '#ff4444', high: '#f85149', medium: '#f0b429',
-  low: '#3fb950', info: '#8b949e',
+  critical: '#f85149', high: '#f0883e', medium: '#f0b429',
+  low: '#58a6ff', info: '#9aa7b8',
 }
 
 const scColor = sc =>

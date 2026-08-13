@@ -2,12 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 
+// Unified severity palette (matches components/SevBadge.jsx)
 const SEV_COLOR = {
-  critical: { bg: '#FF4D4D22', text: '#FF4D4D', border: '#FF4D4D' },
-  high:     { bg: '#FF8C4222', text: '#FF8C42', border: '#FF8C42' },
-  medium:   { bg: '#FFD16622', text: '#FFD166', border: '#FFD166' },
-  low:      { bg: '#06D6A022', text: '#06D6A0', border: '#06D6A0' },
-  info:     { bg: '#4B8CF522', text: '#4B8CF5', border: '#4B8CF5' },
+  critical: { bg: '#f8514916', text: '#f85149', border: '#f85149' },
+  high:     { bg: '#f0883e16', text: '#f0883e', border: '#f0883e' },
+  medium:   { bg: '#f0b42916', text: '#f0b429', border: '#f0b429' },
+  low:      { bg: '#58a6ff16', text: '#58a6ff', border: '#58a6ff' },
+  info:     { bg: '#9aa7b816', text: '#9aa7b8', border: '#9aa7b8' },
 }
 
 const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 }
