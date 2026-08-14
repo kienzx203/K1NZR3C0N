@@ -81,8 +81,8 @@ const WF_TEMPLATES = [
     id: 'blank',
     name: 'Blank Canvas',
     icon: '◻',
-    accent: '#484f58',
-    glow: '#30363d',
+    accent: 'var(--text-3)',
+    glow: 'var(--border)',
     desc: 'Empty canvas — drag tools from the Library panel and wire them however you want. Full control from step one.',
     time: null,
     phases: [],
@@ -267,7 +267,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
   function StepChain({ chain }) {
     if (!chain.length) {
       return (
-        <div style={{ textAlign: 'center', color: '#484f58', fontSize: 11, padding: '12px 0' }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 11, padding: '12px 0' }}>
           Empty canvas — build from scratch using the Library panel
         </div>
       )
@@ -303,7 +303,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
           <div key={lv} style={{ display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
             {li > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', padding: '0 2px' }}>
-                <div style={{ width: 18, height: 1, background: '#30363d' }} />
+                <div style={{ width: 18, height: 1, background: 'var(--border)' }} />
                 <div style={{ width: 0, height: 0, borderTop: '3px solid transparent',
                   borderBottom: '3px solid transparent', borderLeft: '5px solid #30363d' }} />
               </div>
@@ -338,7 +338,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: '#0d1117', border: '1px solid #30363d', borderRadius: 12,
+        background: 'var(--bg-soft)', border: '1px solid #30363d', borderRadius: 12,
         width: 780, maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         boxShadow: `0 32px 96px rgba(0,0,0,.8), 0 0 0 1px #161b22`,
         overflow: 'hidden',
@@ -355,16 +355,16 @@ function NewWorkflowModal({ onClose, onCreated }) {
               letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>
               ◈ New Workflow
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: '#e6edf3', lineHeight: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>
               Choose a starting template
             </div>
-            <div style={{ fontSize: 11, color: '#8b949e', marginTop: 5 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-2)', marginTop: 5 }}>
               Each template comes pre-wired with the right tools and dependencies.
               You can add, remove or modify steps in the editor.
             </div>
           </div>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#8b949e',
+            background: 'none', border: 'none', color: 'var(--text-2)',
             cursor: 'pointer', fontSize: 22, lineHeight: 1, padding: '0 2px', marginTop: -2,
           }}>×</button>
         </div>
@@ -376,8 +376,8 @@ function NewWorkflowModal({ onClose, onCreated }) {
               const isSel = selected === t.id
               return (
                 <button key={t.id} onClick={() => setSelected(t.id)} style={{
-                  background: isSel ? `${t.glow || '#21262d'}` : '#161b22',
-                  border: `1.5px solid ${isSel ? t.accent : '#30363d'}`,
+                  background: isSel ? `${t.glow || 'var(--surface-2)'}` : 'var(--surface)',
+                  border: `1.5px solid ${isSel ? t.accent : 'var(--border)'}`,
                   borderRadius: 8, padding: '11px 14px', cursor: 'pointer',
                   textAlign: 'left', transition: 'all .15s',
                   boxShadow: isSel ? `0 0 0 3px ${t.accent}22` : 'none',
@@ -385,12 +385,12 @@ function NewWorkflowModal({ onClose, onCreated }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <span style={{ fontSize: 17 }}>{t.icon}</span>
                     <span style={{ fontSize: 12, fontWeight: 700,
-                      color: isSel ? t.accent : '#e6edf3', letterSpacing: '.01em' }}>
+                      color: isSel ? t.accent : 'var(--text)', letterSpacing: '.01em' }}>
                       {t.name}
                     </span>
                     {t.time && (
-                      <span style={{ marginLeft: 'auto', fontSize: 9, color: '#484f58',
-                        background: '#161b22', border: '1px solid #21262d',
+                      <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--text-3)',
+                        background: 'var(--surface)', border: '1px solid #21262d',
                         borderRadius: 3, padding: '1px 5px', whiteSpace: 'nowrap' }}>
                         {t.time}
                       </span>
@@ -399,7 +399,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
                   {/* Phase pills — minimal */}
                   <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
                     {t.phases.length === 0
-                      ? <span style={{ fontSize: 9.5, color: '#484f58' }}>Custom</span>
+                      ? <span style={{ fontSize: 9.5, color: 'var(--text-3)' }}>Custom</span>
                       : t.phases.map(pk => {
                         const p = PHASES[pk]
                         return p ? (
@@ -420,7 +420,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
         {tpl && (
           <div style={{
             margin: '14px 22px 0',
-            background: '#161b22', border: `1px solid ${tpl.accent}33`,
+            background: 'var(--surface)', border: `1px solid ${tpl.accent}33`,
             borderRadius: 8, padding: '14px 16px',
             flexShrink: 0,
           }}>
@@ -431,7 +431,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
                     {tpl.icon} {tpl.name}
                   </span>
                   {tpl.chain.length > 0 && (
-                    <span style={{ fontSize: 9.5, color: '#8b949e', background: '#0d1117',
+                    <span style={{ fontSize: 9.5, color: 'var(--text-2)', background: 'var(--bg-soft)',
                       border: '1px solid #21262d', borderRadius: 4, padding: '1px 7px' }}>
                       {tpl.chain.length} steps
                     </span>
@@ -443,7 +443,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: '#8b949e', lineHeight: 1.65, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.65, marginBottom: 10 }}>
                   {tpl.desc}
                 </div>
                 {/* Phase flow */}
@@ -451,7 +451,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
                     {tpl.phases.map((pk, i) => (
                       <React.Fragment key={pk}>
-                        {i > 0 && <span style={{ color: '#484f58', fontSize: 9 }}>→</span>}
+                        {i > 0 && <span style={{ color: 'var(--text-3)', fontSize: 9 }}>→</span>}
                         <span style={{
                           fontSize: 9.5, fontWeight: 700, color: PHASES[pk]?.color,
                           border: `1px solid ${PHASES[pk]?.color}44`,
@@ -468,9 +468,9 @@ function NewWorkflowModal({ onClose, onCreated }) {
               </div>
             </div>
             {/* Step chain */}
-            <div style={{ background: '#0d1117', borderRadius: 6, padding: '8px 12px',
+            <div style={{ background: 'var(--bg-soft)', borderRadius: 6, padding: '8px 12px',
               border: '1px solid #21262d' }}>
-              <div style={{ fontSize: 9, color: '#484f58', fontWeight: 700,
+              <div style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 700,
                 letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 6 }}>
                 Execution Flow
               </div>
@@ -486,7 +486,7 @@ function NewWorkflowModal({ onClose, onCreated }) {
         }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 9.5, color: '#8b949e', fontWeight: 700,
+              <label style={{ fontSize: 9.5, color: 'var(--text-2)', fontWeight: 700,
                 letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 5 }}>
                 Workflow name
               </label>
@@ -501,8 +501,8 @@ function NewWorkflowModal({ onClose, onCreated }) {
                   style={{ borderRadius: '6px 0 0 6px', borderRight: 'none', fontFamily: 'monospace' }}
                 />
                 <span style={{
-                  padding: '6px 10px', background: '#161b22', border: '1px solid #30363d',
-                  borderRadius: '0 6px 6px 0', fontSize: 11, color: '#484f58',
+                  padding: '6px 10px', background: 'var(--surface)', border: '1px solid #30363d',
+                  borderRadius: '0 6px 6px 0', fontSize: 11, color: 'var(--text-3)',
                   lineHeight: '1.6', whiteSpace: 'nowrap',
                 }}>.yaml</span>
               </div>
@@ -553,11 +553,32 @@ export default function Workflows() {
   const [workflows, setWorkflows] = useState([])
   const [showNew, setShowNew] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const fileRef = React.useRef(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     api.getWorkflows().then(setWorkflows).catch(() => {})
   }, [])
+
+  async function handleImport(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const name = file.name.endsWith('.yaml') ? file.name : file.name + '.yaml'
+      await api.importWorkflow(name, text)   // server validates with the full engine
+      const list = await api.getWorkflows()
+      setWorkflows(list)
+      alert(`Imported ${name}`)
+    } catch (err) {
+      alert(err.message || 'Import failed')
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   async function handleDelete(name, e) {
     e.preventDefault()
@@ -582,17 +603,27 @@ export default function Workflows() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-[#e6edf3]">Workflows</h1>
-          <p className="text-xs text-[#8b949e] mt-0.5">
+          <h1 className="text-lg font-bold text-[var(--text)]">Workflows</h1>
+          <p className="text-xs text-[var(--text-2)] mt-0.5">
             Visual drag-drop editor — click a workflow to open the canvas
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          style={{ fontSize: 12 }}
-          onClick={() => setShowNew(true)}>
-          + New Workflow
-        </button>
+        <div className="flex gap-2">
+          <input ref={fileRef} type="file" accept=".yaml,.yml" className="hidden" onChange={handleImport} />
+          <button
+            className="btn btn-accent"
+            style={{ fontSize: 12 }}
+            disabled={importing}
+            onClick={() => fileRef.current?.click()}>
+            {importing ? 'Importing…' : '⬆ Import YAML'}
+          </button>
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: 12 }}
+            onClick={() => setShowNew(true)}>
+            + New Workflow
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
@@ -604,17 +635,27 @@ export default function Workflows() {
               style={{ textDecoration: 'none' }}>
               <div className="flex items-start justify-between gap-3 mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-[#58a6ff] text-lg">◈</span>
-                  <span className="font-mono font-bold text-sm text-[#e6edf3] group-hover:text-[#58a6ff] transition-colors">
+                  <span className="text-[var(--accent)] text-lg">◈</span>
+                  <span className="font-mono font-bold text-sm text-[var(--text)] group-hover:text-[var(--accent)] transition-colors">
                     {name}
                   </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {meta.steps && (
-                    <span className="text-[10px] text-[#484f58] border border-[#30363d] rounded px-1.5 py-0.5 shrink-0">
+                    <span className="text-[10px] text-[var(--text-3)] border border-[var(--border)] rounded px-1.5 py-0.5 shrink-0">
                       {meta.steps} steps
                     </span>
                   )}
+                  <a
+                    href={api.workflowDownloadUrl(name)}
+                    onClick={e => e.stopPropagation()}
+                    title="Download YAML (share/export)"
+                    style={{
+                      background: 'none', border: '1px solid var(--border)', borderRadius: 4,
+                      color: 'var(--text-2)', fontSize: 11, padding: '2px 7px', textDecoration: 'none',
+                    }}>
+                    ⬇
+                  </a>
                   <button
                     onClick={e => handleDelete(name, e)}
                     disabled={deleting === name}
@@ -631,19 +672,19 @@ export default function Workflows() {
                 </div>
               </div>
               {meta.desc
-                ? <p className="text-xs text-[#8b949e] leading-relaxed mb-3">{meta.desc}</p>
-                : <p className="text-xs text-[#484f58] leading-relaxed mb-3 italic">Custom workflow</p>
+                ? <p className="text-xs text-[var(--text-2)] leading-relaxed mb-3">{meta.desc}</p>
+                : <p className="text-xs text-[var(--text-3)] leading-relaxed mb-3 italic">Custom workflow</p>
               }
               {meta.tags && (
                 <div className="flex gap-1.5 flex-wrap">
                   {meta.tags.map(t => (
                     <span key={t} className="text-[9px] font-bold uppercase tracking-wider
-                      text-[#58a6ff] bg-[#58a6ff11] border border-[#58a6ff33]
+                      text-[var(--accent)] bg-[#58a6ff11] border border-[#58a6ff33]
                       rounded px-1.5 py-0.5">{t}</span>
                   ))}
                 </div>
               )}
-              <div className="mt-3 flex items-center gap-1.5 text-[10px] text-[#58a6ff] opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="mt-3 flex items-center gap-1.5 text-[10px] text-[var(--accent)] opacity-0 group-hover:opacity-100 transition-opacity">
                 <span>◈ Open in editor</span>
                 <span>→</span>
               </div>
@@ -662,14 +703,14 @@ export default function Workflows() {
             justifyContent: 'center', gap: 8,
           }}
           onMouseEnter={e => { e.currentTarget.style.borderColor='#58a6ff55'; e.currentTarget.style.background='#0a1929' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor='#30363d'; e.currentTarget.style.background='none' }}>
-          <span style={{ fontSize: 24, color: '#30363d' }}>+</span>
-          <span style={{ fontSize: 11, color: '#484f58' }}>New Workflow</span>
+          onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.background='none' }}>
+          <span style={{ fontSize: 24, color: 'var(--border)' }}>+</span>
+          <span style={{ fontSize: 11, color: 'var(--text-3)' }}>New Workflow</span>
         </button>
 
         {workflows.length === 0 && (
           <div className="card p-8 text-center">
-            <p className="text-[#8b949e] text-sm">No workflow files found in /workflows/</p>
+            <p className="text-[var(--text-2)] text-sm">No workflow files found in /workflows/</p>
           </div>
         )}
       </div>

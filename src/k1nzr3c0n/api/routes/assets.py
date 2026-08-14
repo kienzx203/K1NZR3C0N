@@ -2,6 +2,9 @@
 run's parsed httpx output) down to one row per host:port, keeping the most
 recent sighting. Screenshot + tech data ride along on the Finding row already
 (see parsers/__init__.py::_scan_httpx), so no extra joins are needed here.
+
+Performance: dedupe/filter/pagination all happen in SQL (GROUP BY + subquery),
+so 100k+ finding tables no longer get loaded into Python on every poll.
 """
 from __future__ import annotations
 
@@ -10,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from ...db import Finding, Run, get_db_dep
@@ -20,10 +24,6 @@ router = APIRouter(tags=["assets"])
 class AssetDelete(BaseModel):
     host: str
     port: int | None = None
-
-
-def _asset_key(f: Finding) -> str:
-    return f'{f.host}:{f.port}' if f.port else f.host
 
 
 def _to_asset(f: Finding, target: str | None) -> dict[str, Any]:
@@ -42,21 +42,21 @@ def _to_asset(f: Finding, target: str | None) -> dict[str, Any]:
     }
 
 
-def _dedupe_latest(rows: list[Finding]) -> list[Finding]:
-    """`rows` must already be ordered most-recent-first; keeps the first (latest) per host:port."""
-    seen: set[str] = set()
-    out: list[Finding] = []
-    for f in rows:
-        key = _asset_key(f)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(f)
-    return out
+def _latest_assets_query(db: Session):
+    """Base query: newest Finding row per host:port (autoincrement id == recency)."""
+    newest_ids = (
+        db.query(func.max(Finding.id).label("id"))
+        .filter(Finding.kind == "http")
+        .group_by(Finding.host, func.coalesce(Finding.port, 0))
+    ).subquery()
+    return db.query(Finding).filter(Finding.id.in_(db.query(newest_ids.c.id)))
 
 
-def _run_target_map(db: Session) -> dict[str, str]:
-    return {r.id: r.target for r in db.query(Run.id, Run.target).all()}
+def _run_target_map(db: Session, run_ids: list[str]) -> dict[str, str]:
+    if not run_ids:
+        return {}
+    rows = db.query(Run.id, Run.target).filter(Run.id.in_(run_ids)).all()
+    return {rid: tgt for rid, tgt in rows}
 
 
 @router.get("/assets")
@@ -70,42 +70,40 @@ def list_assets(
     offset: int = Query(0),
     db: Session = Depends(get_db_dep),
 ) -> dict[str, Any]:
-    rows = (
-        db.query(Finding)
-        .filter(Finding.kind == "http")
-        .order_by(Finding.created_at.desc())
-        .all()
-    )
-    assets = _dedupe_latest(rows)
-    targets = _run_target_map(db)
+    query = _latest_assets_query(db)
 
     if q:
-        ql = q.lower()
-        assets = [f for f in assets if ql in (f.host or '').lower()]
+        query = query.filter(Finding.host.contains(q))
     if tech:
-        tech_set = set(tech)
-        assets = [f for f in assets if tech_set & set(json.loads(f.tech or '[]'))]
+        # tech is stored as a JSON array string — quoted-name LIKE is exact-token safe
+        query = query.filter(or_(*[Finding.tech.like(f'%"{t}"%') for t in tech]))
     if target:
-        target_set = set(target)
-        assets = [f for f in assets if targets.get(f.run_id) in target_set]
+        run_ids = [rid for (rid,) in db.query(Run.id).filter(Run.target.in_(target)).all()]
+        if not run_ids:
+            return {"total": 0, "offset": offset, "limit": limit, "items": []}
+        query = query.filter(Finding.run_id.in_(run_ids))
     if status_code:
-        assets = [f for f in assets if f.status_code in status_code]
+        query = query.filter(Finding.status_code.in_(status_code))
     if port:
-        assets = [f for f in assets if f.port in port]
+        query = query.filter(Finding.port.in_(port))
 
-    total = len(assets)
-    page = assets[offset: offset + limit]
+    total = query.count()
+    items = (
+        query.order_by(Finding.created_at.desc())
+        .offset(offset).limit(limit)
+        .all()
+    )
+    targets = _run_target_map(db, [f.run_id for f in items])
     return {
         "total": total, "offset": offset, "limit": limit,
-        "items": [_to_asset(f, targets.get(f.run_id)) for f in page],
+        "items": [_to_asset(f, targets.get(f.run_id)) for f in items],
     }
 
 
 @router.get("/assets/stats")
 def assets_stats(db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    rows = db.query(Finding).filter(Finding.kind == "http").order_by(Finding.created_at.desc()).all()
-    assets = _dedupe_latest(rows)
-    targets = _run_target_map(db)
+    assets = _latest_assets_query(db).all()  # already deduped — usually small
+    targets = _run_target_map(db, [f.run_id for f in assets])
     tech_counts: dict[str, int] = {}
     target_counts: dict[str, int] = {}
     status_counts: dict[str, int] = {}

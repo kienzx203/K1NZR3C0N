@@ -7,10 +7,10 @@ const scColor = sc =>
   sc >= 200 && sc < 300 ? '#3fb950' :
   sc >= 300 && sc < 400 ? '#d29922' :
   sc >= 400 && sc < 500 ? '#f85149' :
-  sc >= 500 ? '#ff6e6e' : '#8b949e'
+  sc >= 500 ? '#ff6e6e' : 'var(--text-2)'
 
 function StatusChip({ code }) {
-  if (code == null) return <span className="text-[13px] text-[#484f58]">—</span>
+  if (code == null) return <span className="text-[13px] text-[var(--text-3)]">—</span>
   const c = scColor(code)
   return (
     <span
@@ -25,7 +25,7 @@ function StatusChip({ code }) {
 function Thumb({ runId, path, alt }) {
   if (!path) {
     return (
-      <div className="w-16 h-11 rounded border border-[#30363d] bg-[#0d1117] flex items-center justify-center text-[#30363d] text-[13px] flex-shrink-0">
+      <div className="w-16 h-11 rounded border border-[var(--border)] bg-[var(--bg-soft)] flex items-center justify-center text-[var(--border)] text-[13px] flex-shrink-0">
         ▢
       </div>
     )
@@ -38,7 +38,7 @@ function Thumb({ runId, path, alt }) {
           src={src}
           alt={alt}
           loading="lazy"
-          className="w-16 h-11 object-cover object-top rounded border border-[#30363d] bg-[#0d1117]
+          className="w-16 h-11 object-cover object-top rounded border border-[var(--border)] bg-[var(--bg-soft)]
                      transition-transform duration-150 ease-out
                      group-hover/thumb:scale-[3] group-hover/thumb:z-20 group-hover/thumb:shadow-2xl
                      relative"
@@ -53,36 +53,36 @@ function Thumb({ runId, path, alt }) {
 function AssetRow({ a, deleting, onDelete }) {
   const key = `${a.host}:${a.port || ''}`
   return (
-    <tr className="border-b border-[#21262d] hover:bg-[#161b22] transition-colors">
+    <tr className="border-b border-[var(--surface-2)] hover:bg-[var(--surface-2)] transition-colors">
       <td className="px-4 py-2">
         <Thumb runId={a.run_id} path={a.screenshot} alt={a.title || a.host} />
       </td>
       <td className="px-4 py-2 font-mono max-w-xs">
-        <a href={a.url} target="_blank" rel="noreferrer" className="text-[#58a6ff] hover:underline">
+        <a href={a.url} target="_blank" rel="noreferrer" className="text-[var(--accent)] hover:underline">
           {a.host}{a.port ? `:${a.port}` : ''}
         </a>
-        {a.title && <div className="text-[#8b949e] text-[13px] truncate max-w-xs">{a.title}</div>}
+        {a.title && <div className="text-[var(--text-2)] text-[13px] truncate max-w-xs">{a.title}</div>}
       </td>
       <td className="px-4 py-2"><StatusChip code={a.status_code} /></td>
-      <td className="px-4 py-2 font-mono text-[#8b949e] text-[13px]">{a.ip || '—'}</td>
+      <td className="px-4 py-2 font-mono text-[var(--text-2)] text-[13px]">{a.ip || '—'}</td>
       <td className="px-4 py-2">
         <div className="flex flex-wrap gap-1 max-w-xs">
           {(a.tech || []).slice(0, 3).map(t => (
-            <span key={t} className="text-[12px] px-1.5 py-0.5 rounded border border-[#30363d] text-[#8b949e] bg-[#0d1117]">{t}</span>
+            <span key={t} className="text-[12px] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-2)] bg-[var(--bg-soft)]">{t}</span>
           ))}
-          {a.tech?.length > 3 && <span className="text-[12px] text-[#484f58]">+{a.tech.length - 3}</span>}
-          {!a.tech?.length && <span className="text-[#30363d]">—</span>}
+          {a.tech?.length > 3 && <span className="text-[12px] text-[var(--text-3)]">+{a.tech.length - 3}</span>}
+          {!a.tech?.length && <span className="text-[var(--border)]">—</span>}
         </div>
       </td>
-      <td className="px-4 py-2 text-[#8b949e] text-[13px] whitespace-nowrap">
+      <td className="px-4 py-2 text-[var(--text-2)] text-[13px] whitespace-nowrap">
         {a.last_seen ? new Date(a.last_seen).toLocaleDateString() : '—'}
         {a.run_id && (
-          <Link to={`/runs/${a.run_id}`} className="block text-[#484f58] hover:text-[#58a6ff] text-[12px]">source run ↗</Link>
+          <Link to={`/runs/${a.run_id}`} className="block text-[var(--text-3)] hover:text-[var(--accent)] text-[12px]">source run ↗</Link>
         )}
       </td>
       <td className="px-4 py-2 text-right">
         <button
-          className="text-[#484f58] hover:text-[#f85149] transition-colors"
+          className="text-[var(--text-3)] hover:text-[var(--red)] transition-colors"
           onClick={() => onDelete(a.host, a.port)}
           disabled={deleting === key}
           title="Remove from inventory"
@@ -104,19 +104,19 @@ function TargetGroup({ target, assets, isCollapsed, onToggle, deleting, onDelete
     <div className="card">
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-[#161b22] transition-colors border-b border-[#30363d]"
+        className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-[var(--surface-2)] transition-colors border-b border-[var(--border)]"
       >
-        <span className="text-[#484f58] text-[12px] w-3">{isCollapsed ? '▸' : '▾'}</span>
-        <span className="font-mono font-bold text-[#e6edf3] text-[14px]">{target}</span>
-        <span className="text-[#8b949e] text-[13px]">({assets.length})</span>
+        <span className="text-[var(--text-3)] text-[12px] w-3">{isCollapsed ? '▸' : '▾'}</span>
+        <span className="font-mono font-bold text-[var(--text)] text-[14px]">{target}</span>
+        <span className="text-[var(--text-2)] text-[13px]">({assets.length})</span>
       </button>
       {!isCollapsed && (
         <>
           <table className="w-full text-xs">
             <thead>
-              <tr className="border-b border-[#30363d]">
+              <tr className="border-b border-[var(--border)]">
                 {COLS.map(h => (
-                  <th key={h} className="px-4 py-2 text-left text-[#8b949e] text-[13px] uppercase tracking-wider">{h}</th>
+                  <th key={h} className="px-4 py-2 text-left text-[var(--text-2)] text-[13px] uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -128,7 +128,7 @@ function TargetGroup({ target, assets, isCollapsed, onToggle, deleting, onDelete
           </table>
           {assets.length > ROW_LIMIT && !showAll && (
             <button
-              className="w-full text-center text-[13px] text-[#58a6ff] hover:underline py-2 border-t border-[#21262d]"
+              className="w-full text-center text-[13px] text-[var(--accent)] hover:underline py-2 border-t border-[var(--surface-2)]"
               onClick={() => setShowAll(true)}
             >
               Show remaining {assets.length - ROW_LIMIT} rows ↓
@@ -226,10 +226,10 @@ export default function Inventory() {
     <div className="p-6 space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-lg font-bold text-[#e6edf3]">
-            Asset Inventory <span className="text-[#8b949e] text-sm font-normal">({data.total})</span>
+          <h1 className="text-lg font-bold text-[var(--text)]">
+            Asset Inventory <span className="text-[var(--text-2)] text-sm font-normal">({data.total})</span>
           </h1>
-          <p className="text-[13px] text-[#8b949e] mt-1">Every live host discovered across all runs, grouped by target and deduped by host:port — most recent sighting wins.</p>
+          <p className="text-[13px] text-[var(--text-2)] mt-1">Every live host discovered across all runs, grouped by target and deduped by host:port — most recent sighting wins.</p>
         </div>
         <button className="btn btn-ghost" onClick={load} title="Refresh">↻ Refresh</button>
       </div>
@@ -244,14 +244,14 @@ export default function Inventory() {
           onChange={e => setSearch(e.target.value)}
         />
         {stats && (
-          <span className="text-[13px] text-[#484f58] ml-auto">
+          <span className="text-[13px] text-[var(--text-3)] ml-auto">
             {stats.with_screenshot} / {stats.total} with screenshot
           </span>
         )}
       </div>
 
       {deleteError && (
-        <div className="text-[13px] text-[#f85149] bg-[#f851491a] border border-[#f8514944] rounded px-3 py-2">
+        <div className="text-[13px] text-[var(--red)] bg-[#f851491a] border border-[#f8514944] rounded px-3 py-2">
           {deleteError}
         </div>
       )}
@@ -260,18 +260,18 @@ export default function Inventory() {
       {activeFilterCount > 0 && (
         <div className="flex flex-wrap gap-1.5 items-center -mt-2">
           {filterCategories.flatMap(c => (filters[c.key] || []).map(v => (
-            <span key={`${c.key}:${v}`} className="flex items-center gap-1 text-[12px] pl-2 pr-1 py-0.5 rounded-full border border-[#30363d] text-[#8b949e]">
+            <span key={`${c.key}:${v}`} className="flex items-center gap-1 text-[12px] pl-2 pr-1 py-0.5 rounded-full border border-[var(--border)] text-[var(--text-2)]">
               <span className="opacity-60">{c.label}:</span> {v}
               <button
                 onClick={() => setFilters(prev => ({ ...prev, [c.key]: prev[c.key].filter(x => x !== v) }))}
-                className="hover:text-[#f85149] transition-colors ml-0.5"
+                className="hover:text-[var(--red)] transition-colors ml-0.5"
               >
                 ✕
               </button>
             </span>
           )))}
           <button
-            className="text-[12px] text-[#484f58] hover:text-[#8b949e]"
+            className="text-[12px] text-[var(--text-3)] hover:text-[var(--text-2)]"
             onClick={() => setFilters({ tech: [], status: [], port: [] })}
           >
             Clear all
@@ -279,9 +279,9 @@ export default function Inventory() {
         </div>
       )}
 
-      {loading && <div className="text-center text-[#484f58] py-10">Loading…</div>}
+      {loading && <div className="text-center text-[var(--text-3)] py-10">Loading…</div>}
       {!loading && groups.length === 0 && (
-        <div className="text-center text-[#8b949e] py-10">
+        <div className="text-center text-[var(--text-2)] py-10">
           No assets yet — run a workflow with an HTTP probe step (httpx) to populate this view.
         </div>
       )}

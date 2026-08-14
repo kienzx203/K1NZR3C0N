@@ -3,15 +3,15 @@ import { api } from '../api.js'
 
 const STATUS_COLOR = {
   200: '#3fb950',
-  301: '#8b949e',
-  302: '#8b949e',
+  301: 'var(--text-2)',
+  302: 'var(--text-2)',
   401: '#d29922',
   403: '#d29922',
   500: '#f85149',
 }
 
 function statusColor(code) {
-  return STATUS_COLOR[code] || (code >= 200 && code < 300 ? '#3fb950' : code >= 400 ? '#f85149' : '#8b949e')
+  return STATUS_COLOR[code] || (code >= 200 && code < 300 ? '#3fb950' : code >= 400 ? '#f85149' : 'var(--text-2)')
 }
 
 export default function ScreenshotGallery({ runId, steps = [] }) {
@@ -40,7 +40,7 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48 text-[#8b949e] text-sm">
+      <div className="flex items-center justify-center h-48 text-[var(--text-2)] text-sm">
         Loading screenshots…
       </div>
     )
@@ -52,8 +52,8 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
     return (
       <div className="flex flex-col items-center justify-center h-48 gap-2">
         <span className="text-4xl opacity-10">📷</span>
-        <p className="text-[#8b949e] text-sm">No screenshots captured</p>
-        <p className="text-[#484f58] text-xs">
+        <p className="text-[var(--text-2)] text-sm">No screenshots captured</p>
+        <p className="text-[var(--text-3)] text-xs">
           {stepRan
             ? 'Screenshot step ran but captured nothing — target may be unreachable or Chromium timed out'
             : 'Enable run_screenshot=true and ensure gowitness + Chromium are available'}
@@ -65,10 +65,10 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-[#21262d] flex-shrink-0">
-        <span className="text-[#8b949e] text-xs tabular-nums">{filtered.length} / {shots.length} screenshots</span>
+      <div className="flex items-center gap-3 px-6 py-3 border-b border-[var(--surface-2)] flex-shrink-0">
+        <span className="text-[var(--text-2)] text-xs tabular-nums">{filtered.length} / {shots.length} screenshots</span>
         <input
-          className="ml-auto w-64 bg-[#0d1117] border border-[#30363d] rounded px-3 py-1 text-xs text-[#e6edf3] placeholder-[#484f58] focus:outline-none focus:border-[#388bfd]"
+          className="ml-auto w-64 bg-[var(--bg-soft)] border border-[var(--border)] rounded px-3 py-1 text-xs text-[var(--text)] placeholder-[var(--text-3)] focus:outline-none focus:border-[#388bfd]"
           placeholder="Filter by URL or title…"
           value={filter}
           onChange={e => setFilter(e.target.value)}
@@ -81,11 +81,11 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
           {filtered.map(s => (
             <div
               key={s.file}
-              className="group rounded-lg border border-[#21262d] overflow-hidden bg-[#161b22] hover:border-[#388bfd] transition-colors cursor-pointer"
+              className="group rounded-lg border border-[var(--surface-2)] overflow-hidden bg-[var(--surface)] hover:border-[#388bfd] transition-colors cursor-pointer"
               onClick={() => setLightbox(s)}
             >
               {/* Thumbnail */}
-              <div className="relative overflow-hidden bg-[#0d1117]" style={{ height: 160 }}>
+              <div className="relative overflow-hidden bg-[var(--bg-soft)]" style={{ height: 160 }}>
                 <img
                   src={imgUrl(s.file)}
                   alt={s.url || s.name}
@@ -111,12 +111,12 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
               {/* Meta */}
               <div className="px-3 py-2 space-y-0.5">
                 {s.title && (
-                  <p className="text-[11px] text-[#e6edf3] font-medium truncate">{s.title}</p>
+                  <p className="text-[11px] text-[var(--text)] font-medium truncate">{s.title}</p>
                 )}
-                <p className="text-[10px] text-[#8b949e] truncate font-mono">
+                <p className="text-[10px] text-[var(--text-2)] truncate font-mono">
                   {s.url || s.name}
                 </p>
-                <p className="text-[9px] text-[#484f58]">
+                <p className="text-[9px] text-[var(--text-3)]">
                   {(s.size / 1024).toFixed(0)} KB
                 </p>
               </div>
@@ -132,11 +132,11 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
           onClick={() => setLightbox(null)}
         >
           <div
-            className="relative max-w-5xl w-full max-h-full overflow-auto rounded-xl border border-[#30363d] bg-[#161b22] shadow-2xl"
+            className="relative max-w-5xl w-full max-h-full overflow-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl"
             onClick={e => e.stopPropagation()}
           >
             {/* Lightbox header */}
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-[#21262d]">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--surface-2)]">
               {lightbox.status != null && (
                 <span
                   className="text-xs font-mono font-bold px-2 py-0.5 rounded flex-shrink-0"
@@ -151,16 +151,16 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
               )}
               <div className="flex-1 min-w-0">
                 {lightbox.title && (
-                  <p className="text-sm text-[#e6edf3] font-medium truncate">{lightbox.title}</p>
+                  <p className="text-sm text-[var(--text)] font-medium truncate">{lightbox.title}</p>
                 )}
-                <p className="text-xs text-[#8b949e] font-mono truncate">{lightbox.url || lightbox.name}</p>
+                <p className="text-xs text-[var(--text-2)] font-mono truncate">{lightbox.url || lightbox.name}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <a
                   href={imgUrl(lightbox.file)}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-2 py-1 text-xs rounded border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#6e7681] transition-colors"
+                  className="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] hover:border-[#6e7681] transition-colors"
                   onClick={e => e.stopPropagation()}
                 >
                   ↗ Full size
@@ -170,14 +170,14 @@ export default function ScreenshotGallery({ runId, steps = [] }) {
                     href={lightbox.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="px-2 py-1 text-xs rounded border border-[#30363d] text-[#8b949e] hover:text-[#58a6ff] hover:border-[#388bfd] transition-colors"
+                    className="px-2 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--accent)] hover:border-[#388bfd] transition-colors"
                     onClick={e => e.stopPropagation()}
                   >
                     ↗ Open URL
                   </a>
                 )}
                 <button
-                  className="w-7 h-7 flex items-center justify-center text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                  className="w-7 h-7 flex items-center justify-center text-[var(--text-2)] hover:text-[var(--text)] transition-colors"
                   onClick={() => setLightbox(null)}
                 >
                   ✕

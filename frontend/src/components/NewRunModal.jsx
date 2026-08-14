@@ -55,7 +55,7 @@ function SectionHeader({ children }) {
   return (
     <div style={{
       fontSize: 10, fontWeight: 700, letterSpacing: '0.09em',
-      color: '#484f58', textTransform: 'uppercase',
+      color: 'var(--text-3)', textTransform: 'uppercase',
       borderBottom: '1px solid #21262d',
       paddingBottom: 6, marginBottom: 10,
     }}>
@@ -180,11 +180,11 @@ export default function NewRunModal({ onClose, onCreated }) {
         style={{ maxWidth: 560, maxHeight: '92vh' }}
       >
         {/* ── Header ──────────────────────────────────────── */}
-        <div className="flex items-start justify-between px-5 py-3.5 border-b border-[#30363d] flex-shrink-0">
+        <div className="flex items-start justify-between px-5 py-3.5 border-b border-[var(--border)] flex-shrink-0">
           <div>
-            <h2 className="text-sm font-bold text-[#e6edf3]">New Run</h2>
+            <h2 className="text-sm font-bold text-[var(--text)]">New Run</h2>
             {wfMeta && (
-              <p className="text-[10px] text-[#484f58] font-mono mt-0.5">
+              <p className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">
                 {(wfMeta.steps || []).length} steps · {Object.keys(wfVars).length} vars
                 {hasAuth && (
                   <span style={{ color: '#58a6ff', marginLeft: 6 }}>· auth support</span>
@@ -213,7 +213,7 @@ export default function NewRunModal({ onClose, onCreated }) {
               {workflows.map(w => <option key={w} value={w}>{w}</option>)}
             </select>
             {wfMeta?.description && (
-              <p className="text-[10px] text-[#8b949e] mt-1.5 leading-relaxed"
+              <p className="text-[10px] text-[var(--text-2)] mt-1.5 leading-relaxed"
                 style={{ lineHeight: 1.55 }}>
                 {wfMeta.description}
               </p>
@@ -237,9 +237,9 @@ export default function NewRunModal({ onClose, onCreated }) {
                     <>
                       <span style={{
                         fontSize: 9, padding: '2px 7px', borderRadius: 3,
-                        background: keyCount > 0 ? '#0a1f0e' : '#0d1117',
-                        border: `1px solid ${keyCount > 0 ? '#3fb95044' : '#21262d'}`,
-                        color: keyCount > 0 ? '#3fb950' : '#484f58',
+                        background: keyCount > 0 ? '#0a1f0e' : 'var(--bg-soft)',
+                        border: `1px solid ${keyCount > 0 ? '#3fb95044' : 'var(--surface-2)'}`,
+                        color: keyCount > 0 ? '#3fb950' : 'var(--text-3)',
                       }}>
                         ⚙ subfinder {keyCount}/{SUBFINDER_TOTAL} keys
                       </span>
@@ -258,14 +258,14 @@ export default function NewRunModal({ onClose, onCreated }) {
                         <span style={{
                           fontSize: 9, padding: '2px 7px', borderRadius: 3,
                           fontFamily: 'monospace',
-                          background: '#0d1117', border: '1px solid #21262d', color: '#484f58',
+                          background: 'var(--bg-soft)', border: '1px solid #21262d', color: 'var(--text-3)',
                         }}>
                           🔑 {deps.autoVars[0]} not set
                         </span>
                       )}
                     </>
                   ) : (
-                    <span style={{ fontSize: 9, color: '#484f58' }}>
+                    <span style={{ fontSize: 9, color: 'var(--text-3)' }}>
                       ○ no key integration
                       {hasAuth ? ' — auth via Cookie/Bearer below' : ''}
                     </span>
@@ -308,14 +308,14 @@ export default function NewRunModal({ onClose, onCreated }) {
                   }}>{t}</span>
                 ))}
                 {targets.length > 6 && (
-                  <span style={{ fontSize: 9, color: '#484f58' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-3)' }}>
                     +{targets.length - 6} more
                   </span>
                 )}
               </div>
             )}
             {overLimit && (
-              <p className="text-[#f85149] text-xs mt-1">
+              <p className="text-[var(--red)] text-xs mt-1">
                 Too many targets. Max {MAX_BATCH} per batch.
               </p>
             )}
@@ -330,12 +330,12 @@ export default function NewRunModal({ onClose, onCreated }) {
                 {'session_cookie' in wfVars && (
                   <div>
                     <label style={{
-                      fontSize: 10, color: '#8b949e', display: 'flex',
+                      fontSize: 10, color: 'var(--text-2)', display: 'flex',
                       alignItems: 'center', gap: 5, marginBottom: 4,
                     }}>
                       <span style={{ fontSize: 13 }}>🍪</span>
                       Cookie
-                      <span style={{ color: '#484f58', fontSize: 9 }}>
+                      <span style={{ color: 'var(--text-3)', fontSize: 9 }}>
                         (Cookie: header)
                       </span>
                     </label>
@@ -352,12 +352,12 @@ export default function NewRunModal({ onClose, onCreated }) {
                 {'auth_header' in wfVars && (
                   <div>
                     <label style={{
-                      fontSize: 10, color: '#8b949e', display: 'flex',
+                      fontSize: 10, color: 'var(--text-2)', display: 'flex',
                       alignItems: 'center', gap: 5, marginBottom: 4,
                     }}>
                       <span style={{ fontSize: 13 }}>🔑</span>
                       Authorization
-                      <span style={{ color: '#484f58', fontSize: 9 }}>
+                      <span style={{ color: 'var(--text-3)', fontSize: 9 }}>
                         (Authorization: header)
                       </span>
                     </label>
@@ -374,12 +374,12 @@ export default function NewRunModal({ onClose, onCreated }) {
                 {'custom_header' in wfVars && (
                   <div>
                     <label style={{
-                      fontSize: 10, color: '#8b949e', display: 'flex',
+                      fontSize: 10, color: 'var(--text-2)', display: 'flex',
                       alignItems: 'center', gap: 5, marginBottom: 4,
                     }}>
                       <span style={{ fontSize: 13 }}>⊕</span>
                       Custom Header
-                      <span style={{ color: '#484f58', fontSize: 9 }}>
+                      <span style={{ color: 'var(--text-3)', fontSize: 9 }}>
                         (Name: Value)
                       </span>
                     </label>
@@ -401,7 +401,7 @@ export default function NewRunModal({ onClose, onCreated }) {
             <div>
               <SectionHeader>
                 Phases
-                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6, color: '#30363d' }}>
+                <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: 6, color: 'var(--border)' }}>
                   click to enable / disable
                 </span>
               </SectionHeader>
@@ -415,9 +415,9 @@ export default function NewRunModal({ onClose, onCreated }) {
                       onClick={() => setVar(k, isOn ? 'false' : 'true')}
                       style={{
                         fontSize: 10, padding: '3px 10px', borderRadius: 4,
-                        border: `1px solid ${isOn ? '#3fb95055' : '#21262d'}`,
+                        border: `1px solid ${isOn ? '#3fb95055' : 'var(--surface-2)'}`,
                         background: isOn ? '#3fb95014' : 'transparent',
-                        color: isOn ? '#3fb950' : '#484f58',
+                        color: isOn ? '#3fb950' : 'var(--text-3)',
                         cursor: 'pointer', fontFamily: 'monospace',
                         transition: 'all .12s',
                       }}
@@ -444,7 +444,7 @@ export default function NewRunModal({ onClose, onCreated }) {
                   return (
                     <div key={k}>
                       <label style={{
-                        fontSize: 9, color: '#8b949e', display: 'flex',
+                        fontSize: 9, color: 'var(--text-2)', display: 'flex',
                         alignItems: 'center', gap: 4,
                         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3,
                       }}>
@@ -489,7 +489,7 @@ export default function NewRunModal({ onClose, onCreated }) {
               <button
                 onClick={() => setShowAdvanced(v => !v)}
                 style={{
-                  fontSize: 10, color: '#484f58', background: 'none',
+                  fontSize: 10, color: 'var(--text-3)', background: 'none',
                   border: 'none', cursor: 'pointer', padding: 0,
                   display: 'flex', alignItems: 'center', gap: 5,
                 }}
@@ -507,7 +507,7 @@ export default function NewRunModal({ onClose, onCreated }) {
                   {advVars.map(k => (
                     <div key={k}>
                       <label style={{
-                        fontSize: 9, color: '#8b949e', display: 'block',
+                        fontSize: 9, color: 'var(--text-2)', display: 'block',
                         textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3,
                       }}>
                         {k.replace(/_/g, ' ')}
@@ -529,7 +529,7 @@ export default function NewRunModal({ onClose, onCreated }) {
           <div>
             <label className="label">
               Output dir
-              <span className="text-[#8b949e] normal-case font-normal ml-1">
+              <span className="text-[var(--text-2)] normal-case font-normal ml-1">
                 (optional · single target only)
               </span>
             </label>
@@ -550,12 +550,12 @@ export default function NewRunModal({ onClose, onCreated }) {
               ['res', 'Resume', resume, setResume],
             ].map(([k, label, val, setter]) => (
               <label key={k}
-                className="flex items-center gap-1.5 text-xs text-[#8b949e] cursor-pointer select-none">
+                className="flex items-center gap-1.5 text-xs text-[var(--text-2)] cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={val}
                   onChange={e => setter(e.target.checked)}
-                  className="accent-[#58a6ff]"
+                  className="accent-[var(--accent)]"
                 />
                 {label}
               </label>
@@ -566,7 +566,7 @@ export default function NewRunModal({ onClose, onCreated }) {
           {progress && (
             <div>
               <div className="flex justify-between mb-1">
-                <span style={{ fontSize: 9, color: '#8b949e', fontFamily: 'monospace' }}>
+                <span style={{ fontSize: 9, color: 'var(--text-2)', fontFamily: 'monospace' }}>
                   Creating runs… {progress.done}/{progress.total}
                 </span>
                 {progress.errors > 0 && (
@@ -575,7 +575,7 @@ export default function NewRunModal({ onClose, onCreated }) {
                   </span>
                 )}
               </div>
-              <div style={{ background: '#21262d', borderRadius: 4, height: 5, overflow: 'hidden' }}>
+              <div style={{ background: 'var(--surface-2)', borderRadius: 4, height: 5, overflow: 'hidden' }}>
                 <div style={{
                   height: '100%', borderRadius: 4, transition: 'width .15s',
                   background: progress.errors > 0 ? '#f85149' : '#3fb950',
@@ -585,14 +585,14 @@ export default function NewRunModal({ onClose, onCreated }) {
             </div>
           )}
 
-          {error && <p className="text-[#f85149] text-xs">{error}</p>}
+          {error && <p className="text-[var(--red)] text-xs">{error}</p>}
         </div>
 
         {/* ── Footer ──────────────────────────────────────── */}
         <div
-          className="flex gap-2 justify-between items-center px-5 py-3.5 border-t border-[#30363d] flex-shrink-0"
+          className="flex gap-2 justify-between items-center px-5 py-3.5 border-t border-[var(--border)] flex-shrink-0"
         >
-          <div style={{ fontSize: 10, color: '#484f58', fontFamily: 'monospace' }}>
+          <div style={{ fontSize: 10, color: 'var(--text-3)', fontFamily: 'monospace' }}>
             {(() => {
               const overrides = varsList().length
               const autoCount = priTextVars.filter(k => autoProvider(k)).length

@@ -54,6 +54,24 @@ def _gowitness_screenshot_by_url(ws: Path) -> dict[str, str]:
     return out
 
 
+# ── Scanner registry (plugin system) ──────────────────────────────────────────
+# A scanner is any callable(run_id: str, ws: Path, out: list[Finding]) -> None.
+# External tools can add parsers without editing this module:
+#
+#     from k1nzr3c0n.parsers import register_scanner
+#     @register_scanner
+#     def _scan_mytool(run_id, ws, out): ...
+
+from typing import Callable  # noqa: E402
+
+SCANNERS: list[Callable] = []
+
+
+def register_scanner(fn: Callable) -> Callable:
+    SCANNERS.append(fn)
+    return fn
+
+
 def parse_workspace(run_id: str, workspace: str) -> list[Finding]:
     """Scan a run workspace for known output files and return Finding objects."""
     ws = Path(workspace)
@@ -61,13 +79,16 @@ def parse_workspace(run_id: str, workspace: str) -> list[Finding]:
         return []
 
     findings: list[Finding] = []
-    _scan_nuclei(run_id, ws, findings)
-    _scan_httpx(run_id, ws, findings)
-    _scan_naabu(run_id, ws, findings)
-    _scan_subdomains(run_id, ws, findings)
-    _scan_katana(run_id, ws, findings)
-    _scan_gau(run_id, ws, findings)
+    for scanner in SCANNERS:
+        try:
+            scanner(run_id, ws, findings)
+        except Exception:
+            # One broken output file must not zero out the whole parse.
+            pass
     return findings
+
+
+# Built-in scanners — registered after their definitions below (bottom of file).
 
 
 # ── Nuclei JSONL ──────────────────────────────────────────────────────────────
@@ -312,3 +333,9 @@ def _first(lst) -> str | None:
     if isinstance(lst, list) and lst:
         return str(lst[0])
     return None
+
+
+# ── Built-in scanner registration ─────────────────────────────────────────────
+for _fn in (_scan_nuclei, _scan_httpx, _scan_naabu,
+            _scan_subdomains, _scan_katana, _scan_gau):
+    register_scanner(_fn)

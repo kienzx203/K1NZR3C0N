@@ -47,6 +47,10 @@ celery_app.conf.update(
             "task": "k1nzr3c0n.check_tool_versions",
             "schedule": crontab(hour=4, minute=0),  # daily at 4 AM
         },
+        "scheduler-tick": {
+            "task": "k1nzr3c0n.scheduler_tick",
+            "schedule": crontab(minute="*"),  # continuous-recon schedules
+        },
     },
 )
 
@@ -446,6 +450,175 @@ def _send_webhook(
         pass  # non-fatal
 
 
+def _send_webhook_message(title: str, body: str, *, ok: bool) -> None:
+    """Generic Slack/Discord notifier used by run-completion AND instant alerts."""
+    url = WEBHOOK_URL
+    if not url:
+        return
+    color = 0x3FB950 if ok else 0xF85149
+    if "discord.com" in url:
+        payload = {"embeds": [{"title": title, "description": body, "color": color,
+                               "footer": {"text": "k1nzr3c0n"}}]}
+    else:
+        payload = {
+            "username": WEBHOOK_USERNAME,
+            "attachments": [{
+                "title": title,
+                "text": body.replace("**", "").replace("`", "`"),
+                "color": "good" if ok else "danger",
+                "footer": "k1nzr3c0n",
+            }],
+        }
+    try:
+        req = urllib.request.Request(
+            url, data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"}, method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            resp.read()
+    except (urllib.error.URLError, OSError):
+        pass  # non-fatal
+
+
+# ── Continuous recon: scheduler tick ──────────────────────────────────────────
+
+@celery_app.task(name="k1nzr3c0n.scheduler_tick")
+def scheduler_tick() -> dict:
+    """Fires every minute: launch any enabled Schedule whose next_run_at passed."""
+    from croniter import croniter
+    from .db import Schedule, get_db
+
+    # Beat liveness marker (the /health endpoint reads this).
+    try:
+        _redis.set("k1nzr3c0n:beat_tick", datetime.utcnow().isoformat())
+    except Exception:
+        pass
+
+    now = datetime.now()  # local time — matches croniter's interpretation
+    db = get_db()
+    launched = 0
+    try:
+        due = (
+            db.query(Schedule)
+            .filter(Schedule.enabled == True,                       # noqa: E712
+                    Schedule.next_run_at != None,                   # noqa: E711
+                    Schedule.next_run_at <= now)
+            .all()
+        )
+        for s in due:
+            try:
+                from .api.routes.runs import launch_run  # lazy — avoid circular import
+                vars_dict = json.loads(s.vars_json or "{}")
+                run = launch_run(db, workflow=s.workflow, target=s.target,
+                                 vars_dict=vars_dict, origin=f"schedule:{s.id}")
+                s.last_run_id = run.id
+                s.last_run_at = datetime.utcnow()
+                launched += 1
+            except Exception:
+                pass  # still advance next_run_at below — no hot retry loop
+            s.next_run_at = croniter(s.cron_expr, datetime.now()).get_next(datetime)
+        if due:
+            db.commit()
+        return {"due": len(due), "launched": launched}
+    finally:
+        db.close()
+
+
+# ── New-asset detection + instant severity alerts ────────────────────────────
+
+def detect_new_assets(db, run) -> int:
+    """Diff this run's discovered hosts against ALL earlier runs of the same
+    target; persist first-seen hosts and alert when enabled."""
+    from .db import Finding, NewAsset, Run as _Run
+
+    cur_rows = (
+        db.query(Finding.host, Finding.kind)
+        .filter(Finding.run_id == run.id, Finding.kind.in_(["subdomain", "http"]))
+        .all()
+    )
+    current: dict[str, str] = {}
+    for host, kind in cur_rows:
+        if host:
+            current.setdefault(host.lower(), kind)
+    if not current:
+        return 0
+
+    past_ids = [
+        r[0] for r in
+        db.query(_Run.id).filter(_Run.target == run.target, _Run.id != run.id).all()
+    ]
+    seen: set[str] = set()
+    if past_ids:
+        rows = (
+            db.query(Finding.host)
+            .filter(Finding.run_id.in_(past_ids), Finding.kind.in_(["subdomain", "http"]))
+            .all()
+        )
+        seen = {h.lower() for (h,) in rows if h}
+
+    already_alerted = {
+        a.host.lower() for a in
+        db.query(NewAsset.host).filter(NewAsset.target == run.target).all()
+    }
+
+    new_hosts = sorted(h for h in current if h not in seen and h not in already_alerted)
+    for h in new_hosts:
+        db.add(NewAsset(run_id=run.id, target=run.target, host=h, kind=current[h]))
+    db.commit()
+
+    if new_hosts:
+        _alert_new_assets(db, run, new_hosts)
+    return len(new_hosts)
+
+
+def _alert_new_assets(db, run, hosts: list[str]) -> None:
+    from .db import Schedule
+    # Respect the schedule's alert flag when this run was schedule-launched.
+    sched = db.query(Schedule).filter(Schedule.last_run_id == run.id).first()
+    if sched and not sched.alert_new_assets:
+        return
+    shown = hosts[:15]
+    more = f"\n… and {len(hosts) - 15} more" if len(hosts) > 15 else ""
+    body = (
+        f"**Target:** `{run.target}`\n"
+        f"**Run:** `{run.id}` ({run.workflow})\n"
+        f"**New hosts ({len(hosts)}):**\n"
+        + "\n".join(f"`{h}`" for h in shown)
+        + more
+    )
+    _send_webhook_message(f"🆕 k1nzr3c0n · {len(hosts)} NEW ASSETS", body, ok=True)
+
+
+def alert_critical_findings(db, run) -> None:
+    """Instant webhook when a run surfaces critical/high vulns — don't wait
+    for the deferred completion notification."""
+    from .db import Finding
+
+    rows = (
+        db.query(Finding)
+        .filter(Finding.run_id == run.id, Finding.kind == "vuln",
+                Finding.severity.in_(["critical", "high"]))
+        .order_by(Finding.severity, Finding.host)
+        .all()
+    )
+    if not rows:
+        return
+    crit = sum(1 for r in rows if r.severity == "critical")
+    high = len(rows) - crit
+    shown = rows[:8]
+    lines = "\n".join(
+        f"**[{(r.severity or '').upper()}]** `{r.template_id or r.name or 'unknown'}` — `{r.host}`"
+        for r in shown
+    )
+    more = f"\n… and {len(rows) - 8} more" if len(rows) > 8 else ""
+    body = (
+        f"**Target:** `{run.target}`\n"
+        f"**Run:** `{run.id}` ({run.workflow})\n"
+        f"**{crit} critical · {high} high**\n\n" + lines + more
+    )
+    _send_webhook_message("🚨 k1nzr3c0n · CRITICAL/HIGH FINDINGS", body, ok=False)
+
+
 # ── Main run task ─────────────────────────────────────────────────────────────
 
 @celery_app.task(bind=True, name="k1nzr3c0n.execute_run")
@@ -708,7 +881,14 @@ def parse_findings(run_id: str) -> dict:
             db.bulk_save_objects(findings)
             db.commit()
 
-        return {"run_id": run_id, "count": len(findings)}
+        # Continuous-recon add-ons — non-fatal if they fail.
+        try:
+            new_count = detect_new_assets(db, run)
+            alert_critical_findings(db, run)
+        except Exception:
+            new_count = 0
+
+        return {"run_id": run_id, "count": len(findings), "new_assets": new_count}
     finally:
         db.close()
 

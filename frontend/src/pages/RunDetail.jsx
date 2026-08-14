@@ -19,6 +19,7 @@ export default function RunDetail() {
   const [totalLogs, setTotalLogs] = useState(0)
   const [steps, setSteps] = useState([])
   const [screenshotCount, setScreenshotCount] = useState(null)
+  const [newAssets, setNewAssets] = useState(null)
   const [pausing, setPausing] = useState(false)
   const [resuming, setResuming] = useState(false)
   const wsRef = useRef(null)
@@ -52,6 +53,12 @@ export default function RunDetail() {
     api.getScreenshots(id)
       .then(shots => setScreenshotCount(shots.length))
       .catch(() => setScreenshotCount(0))
+  }, [run?.status, id])
+
+  // New assets (first-seen hosts vs earlier runs of the same target)
+  useEffect(() => {
+    if (!run || !['completed', 'failed', 'paused'].includes(run.status)) return
+    api.getNewAssets(id).then(r => setNewAssets(r.items || [])).catch(() => {})
   }, [run?.status, id])
 
   useEffect(() => {
@@ -152,7 +159,7 @@ export default function RunDetail() {
     }
   }, [id])
 
-  if (!run) return <div className="p-8 text-[#8b949e] text-sm">Loading…</div>
+  if (!run) return <div className="p-8 text-[var(--text-2)] text-sm">Loading…</div>
 
   const dur = run.status === 'running' ? 'running…' : formatDuration(durSecs(run))
 
@@ -197,33 +204,33 @@ export default function RunDetail() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-[#30363d] px-6 py-4 flex items-start justify-between">
+      <div className="border-b border-[var(--border)] px-6 py-4 flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Link to="/runs" className="text-[#8b949e] hover:text-[#58a6ff] text-xs">Runs</Link>
-            <span className="text-[#30363d]">/</span>
-            <span className="text-xs text-[#e6edf3] font-mono">{id}</span>
+            <Link to="/runs" className="text-[var(--text-2)] hover:text-[var(--accent)] text-xs">Runs</Link>
+            <span className="text-[var(--border)]">/</span>
+            <span className="text-xs text-[var(--text)] font-mono">{id}</span>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-base font-bold text-[#e6edf3] font-mono">{run.target}</h1>
+            <h1 className="text-base font-bold text-[var(--text)] font-mono">{run.target}</h1>
             <span className={`badge badge-${run.status}`}>{run.status}</span>
-            <span className="text-[#8b949e] text-xs">{run.workflow}</span>
+            <span className="text-[var(--text-2)] text-xs">{run.workflow}</span>
             {run.findings_count > 0 && (
-              <span className="text-xs font-mono border border-[#FF8C42] text-[#FF8C42] rounded px-1.5 py-0.5">
+              <span className="text-xs font-mono border border-[var(--orange)] text-[var(--orange)] rounded px-1.5 py-0.5">
                 {run.findings_count} findings
               </span>
             )}
           </div>
-          <div className="flex gap-4 mt-1 text-[11px] text-[#8b949e] flex-wrap">
+          <div className="flex gap-4 mt-1 text-[11px] text-[var(--text-2)] flex-wrap">
             <span title={run.started_at || run.created_at}>
               Started: {fmtDate(run.started_at || run.created_at)}
             </span>
-            <span>Duration: <span className={run.status === 'running' ? 'text-[#3fb950]' : ''}>{dur}</span></span>
+            <span>Duration: <span className={run.status === 'running' ? 'text-[var(--green)]' : ''}>{dur}</span></span>
             {run.returncode != null && run.returncode !== 0 && (
-              <span className="text-[#f85149]">Exit: {run.returncode}</span>
+              <span className="text-[var(--red)]">Exit: {run.returncode}</span>
             )}
             <button
-              className="text-[#484f58] hover:text-[#8b949e] font-mono transition-colors"
+              className="text-[var(--text-3)] hover:text-[var(--text-2)] font-mono transition-colors"
               title="Copy run ID"
               onClick={() => navigator.clipboard.writeText(id)}
             >{id} ⧉</button>
@@ -241,7 +248,7 @@ export default function RunDetail() {
           )}
           {isActive && pausing && (
             <>
-              <span className="text-xs text-[#f0b429] self-center whitespace-nowrap">⌛ Pausing after current step…</span>
+              <span className="text-xs text-[var(--amber)] self-center whitespace-nowrap">⌛ Pausing after current step…</span>
               <button
                 className="btn btn-ghost text-xs"
                 onClick={handleCancelPause}
@@ -258,7 +265,7 @@ export default function RunDetail() {
           {canResume && (
             <button
               className="btn"
-              style={{ color: resuming ? '#8b949e' : '#3fb950', borderColor: resuming ? '#30363d' : '#3fb95066' }}
+              style={{ color: resuming ? 'var(--text-2)' : '#3fb950', borderColor: resuming ? 'var(--border)' : '#3fb95066' }}
               onClick={handleResume}
               disabled={resuming}
             >
@@ -266,29 +273,70 @@ export default function RunDetail() {
             </button>
           )}
           {isPaused && !resuming && (
-            <span className="text-xs text-[#f0b429] self-center">
+            <span className="text-xs text-[var(--amber)] self-center">
               ⏸ Paused — progress saved
             </span>
           )}
           {isDone && (
-            <a
-              href={api.reportUrl(id)}
-              target="_blank"
-              rel="noreferrer"
-              className="btn"
-              style={{ fontSize: 12 }}
-            >
-              ↗ Report
-            </a>
+            <>
+              <a
+                href={api.reportUrl(id)}
+                target="_blank"
+                rel="noreferrer"
+                className="btn"
+                style={{ fontSize: 12 }}
+              >
+                ↗ Report
+              </a>
+              <a
+                href={api.reportDraftUrl(id, 'hackerone')}
+                title="Submission-ready markdown drafts (HackerOne format) for every open vuln"
+                className="btn btn-accent"
+                style={{ fontSize: 12 }}
+              >
+                ⬇ Draft H1
+              </a>
+              <a
+                href={api.reportDraftUrl(id, 'bugcrowd')}
+                title="Submission-ready markdown drafts (Bugcrowd format)"
+                className="btn btn-ghost"
+                style={{ fontSize: 12 }}
+              >
+                ⬇ Draft BC
+              </a>
+            </>
           )}
         </div>
       </div>
+
+      {/* New assets discovered by this run (first-seen vs earlier runs) */}
+      {newAssets && newAssets.length > 0 && (
+        <div className="mx-6 mt-4 px-4 py-2.5 rounded-lg fade-in"
+             style={{ background: 'rgba(63,185,80,.07)', border: '1px solid rgba(63,185,80,.35)' }}>
+          <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--green)' }}>
+            🆕 {newAssets.length} new asset{newAssets.length > 1 ? 's' : ''} first seen in this run
+          </p>
+          <div className="flex gap-1.5 flex-wrap">
+            {newAssets.slice(0, 12).map(a => (
+              <span key={a.id} className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                    style={{ background: 'var(--surface)', color: 'var(--text-2)', border: '1px solid var(--border)' }}>
+                {a.host}
+              </span>
+            ))}
+            {newAssets.length > 12 && (
+              <span className="text-[10px] self-center" style={{ color: 'var(--text-3)' }}>
+                +{newAssets.length - 12} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Step progress */}
       <StepProgress steps={steps} running={isActive} />
 
       {/* Tabs */}
-      <div className="border-b border-[#30363d] px-6 flex gap-0">
+      <div className="border-b border-[var(--border)] px-6 flex gap-0">
         {TABS.map(t => {
           const count = t === 'Findings' && run.findings_count > 0
             ? run.findings_count
@@ -300,12 +348,12 @@ export default function RunDetail() {
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2.5 text-xs border-b-2 transition-colors flex items-center gap-1.5 ${
-                tab === t ? 'border-[#58a6ff] text-[#58a6ff]' : 'border-transparent text-[#8b949e] hover:text-[#e6edf3]'
+                tab === t ? 'border-[var(--accent)] text-[var(--accent)]' : 'border-transparent text-[var(--text-2)] hover:text-[var(--text)]'
               }`}
             >
               {t}
               {count != null && (
-                <span className="text-[9px] bg-[#FF8C4233] text-[#FF8C42] rounded px-1">{count}</span>
+                <span className="text-[9px] bg-[#FF8C4233] text-[var(--orange)] rounded px-1">{count}</span>
               )}
             </button>
           )
@@ -324,7 +372,7 @@ export default function RunDetail() {
           <div className="p-6 space-y-4">
             {isDone ? (
               <>
-                <p className="text-sm text-[#8b949e]">
+                <p className="text-sm text-[var(--text-2)]">
                   The report is generated on-the-fly from the structured findings in the database.
                   It includes vulnerabilities, HTTP services, open ports, and discovered subdomains.
                 </p>
@@ -344,12 +392,12 @@ export default function RunDetail() {
                     ↺ Reparse Findings
                   </button>
                 </div>
-                <p className="text-xs text-[#8b949e]">
+                <p className="text-xs text-[var(--text-2)]">
                   The report opens in a new tab and can be saved as PDF via browser print (Ctrl+P → Save as PDF).
                 </p>
               </>
             ) : (
-              <p className="text-sm text-[#8b949e]">Report is available after the run completes.</p>
+              <p className="text-sm text-[var(--text-2)]">Report is available after the run completes.</p>
             )}
           </div>
         )}

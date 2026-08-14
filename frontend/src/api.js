@@ -1,13 +1,29 @@
 const BASE = '/api/v1'
+const TOKEN_KEY = 'k1z-api-token'
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || ''
+}
+export function setToken(t) {
+  t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY)
+}
+
+function headers(extra = {}) {
+  const h = { ...extra }
+  const token = getToken()
+  if (token) h['Authorization'] = `Bearer ${token}`
+  return h
+}
 
 async function req(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: headers(body ? { 'Content-Type': 'application/json' } : {}),
     body: body ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }))
+    if (res.status === 401) window.dispatchEvent(new CustomEvent('k1z:unauthorized'))
     throw new Error(err.detail || res.statusText)
   }
   if (res.status === 204) return null
@@ -15,11 +31,18 @@ async function req(method, path, body) {
 }
 
 export const api = {
+  // Auth / system
+  authStatus: () => req('GET', '/auth/status'),
+  getHealth:  () => req('GET', '/health'),
+
   // Workflows
   getWorkflows:   () => req('GET', '/workflows'),
   getWorkflow:    (name) => req('GET', `/workflows/${encodeURIComponent(name)}`),
   saveWorkflow:   (name, body) => req('PUT', `/workflows/${encodeURIComponent(name)}`, body),
   deleteWorkflow: (name) => req('DELETE', `/workflows/${encodeURIComponent(name)}`),
+  importWorkflow: (name, yamlText) => req('POST', '/workflows/import', { name, yaml_text: yamlText }),
+  workflowHistory: (name) => req('GET', `/workflows/${encodeURIComponent(name)}/history`),
+  workflowDownloadUrl: (name) => `${BASE}/workflows/${encodeURIComponent(name)}/download`,
 
   // Runs
   getRuns: (params = {}) => {
@@ -34,6 +57,7 @@ export const api = {
   cancelPause:    (id) => req('DELETE', `/runs/${id}/pause`),
   resumeRun:      (id) => req('POST',   `/runs/${id}/resume`),
   deleteRun: (id) => req('DELETE', `/runs/${id}`),
+  getNewAssets: (id) => req('GET', `/runs/${id}/new-assets`),
 
   // Logs (paginated)
   getLogs: (id, params = {}) => {
@@ -45,7 +69,8 @@ export const api = {
   getFiles: (runId) => req('GET', `/runs/${runId}/files`),
   getScreenshots: (runId) => req('GET', `/runs/${runId}/screenshots`),
   getFileContent: (runId, path) =>
-    fetch(`${BASE}/runs/${runId}/files/${path.split('/').map(encodeURIComponent).join('/')}`).then(r => r.text()),
+    fetch(`${BASE}/runs/${runId}/files/${path.split('/').map(encodeURIComponent).join('/')}`,
+          { headers: headers() }).then(r => r.text()),
 
   // Findings
   getFindings: (params = {}) => {
@@ -59,9 +84,28 @@ export const api = {
   },
   patchFinding: (id, body) => req('PATCH', `/findings/${id}`, body),
   reparseFinding: (runId) => req('POST', `/runs/${runId}/findings/reparse`),
+  getDuplicates: () => req('GET', '/findings/duplicates'),
+  resolveDuplicates: () => req('POST', '/findings/duplicates/resolve'),
 
   // Reports
   reportUrl: (runId) => `${BASE}/runs/${runId}/report`,
+  reportDraftUrl: (runId, format = 'hackerone') => `${BASE}/runs/${runId}/report-draft?format=${format}`,
+
+  // Schedules (continuous recon)
+  getSchedules:    () => req('GET', '/schedules'),
+  createSchedule:  (body) => req('POST', '/schedules', body),
+  patchSchedule:   (id, body) => req('PATCH', `/schedules/${id}`, body),
+  deleteSchedule:  (id) => req('DELETE', `/schedules/${id}`),
+  triggerSchedule: (id) => req('POST', `/schedules/${id}/trigger`),
+
+  // Targets (target-centric view + scope)
+  getTargets:    () => req('GET', '/targets'),
+  createTarget:  (body) => req('POST', '/targets', body),
+  getTarget:     (name) => req('GET', `/targets/${encodeURIComponent(name)}`),
+  patchTarget:   (name, body) => req('PATCH', `/targets/${encodeURIComponent(name)}`, body),
+  deleteTarget:  (name) => req('DELETE', `/targets/${encodeURIComponent(name)}`),
+  getTargetAudit: (name) => req('GET', `/targets/${encodeURIComponent(name)}/audit`),
+  scopeCheck:    (host) => req('GET', `/scope/check?host=${encodeURIComponent(host)}`),
 
   // Tools
   getTools: () => req('GET', '/tools'),
@@ -91,5 +135,7 @@ export const api = {
 
 export function wsUrl(runId) {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${proto}://${location.host}/ws/runs/${runId}`
+  const token = getToken()
+  const qs = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${proto}://${location.host}/ws/runs/${runId}${qs}`
 }

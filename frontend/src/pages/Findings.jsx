@@ -31,10 +31,40 @@ export default function Findings() {
   const [data, setData] = useState(null)
   const [filter, setFilter] = useState({ kind: '', severity: '', status: 'open', host: '' })
   const [loading, setLoading] = useState(false)
+  const [dupes, setDupes] = useState(null)
+  const [resolving, setResolving] = useState(false)
+  const [expandedId, setExpandedId] = useState(null)
+  const [draft, setDraft] = useState({ notes: '', tags: '' })
 
   useEffect(() => {
     api.getFindingsStats().then(setStats).catch(() => {})
+    api.getDuplicates().then(setDupes).catch(() => {})
   }, [])
+
+  async function resolveAllDupes() {
+    if (!window.confirm('Resolve older duplicates (keep newest open, tag the rest)?')) return
+    setResolving(true)
+    try {
+      const r = await api.resolveDuplicates()
+      setDupes(d => d ? { ...d, total: 0, groups: [] } : d)
+      alert(`Resolved ${r.resolved} duplicate finding(s).`)
+      window.location.reload()
+    } catch (e) { alert(e.message) }
+    finally { setResolving(false) }
+  }
+
+  function openDetail(f) {
+    if (expandedId === f.id) { setExpandedId(null); return }
+    setExpandedId(f.id)
+    setDraft({ notes: f.notes || '', tags: (f.tags || []).join(', ') })
+  }
+
+  async function saveDetail(f) {
+    const tags = draft.tags.split(',').map(t => t.trim()).filter(Boolean)
+    await api.patchFinding(f.id, { notes: draft.notes, tags })
+    setData(prev => prev ? { ...prev, items: prev.items.map(x => x.id === f.id ? { ...x, notes: draft.notes, tags } : x) } : prev)
+    setExpandedId(null)
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -53,8 +83,8 @@ export default function Findings() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-lg font-bold text-[#e6edf3] font-mono mb-1">Findings</h1>
-        <p className="text-xs text-[#8b949e]">Structured intel parsed from all run outputs</p>
+        <h1 className="text-lg font-bold text-[var(--text)] font-mono mb-1">Findings</h1>
+        <p className="text-xs text-[var(--text-2)]">Structured intel parsed from all run outputs</p>
       </div>
 
       {/* Stats row */}
@@ -76,9 +106,9 @@ export default function Findings() {
               </button>
             )
           })}
-          <div className="border border-[#30363d] rounded-lg px-4 py-2 text-center">
-            <div className="text-xl font-bold font-mono text-[#e6edf3]">{stats.total}</div>
-            <div className="text-[10px] text-[#8b949e] uppercase tracking-widest">Total</div>
+          <div className="border border-[var(--border)] rounded-lg px-4 py-2 text-center">
+            <div className="text-xl font-bold font-mono text-[var(--text)]">{stats.total}</div>
+            <div className="text-[10px] text-[var(--text-2)] uppercase tracking-widest">Total</div>
           </div>
         </div>
       )}
@@ -108,58 +138,112 @@ export default function Findings() {
           <option value="fp">False positive</option>
           <option value="resolved">Resolved</option>
         </select>
-        <span className="text-xs text-[#8b949e] self-center ml-auto">{data?.total ?? '—'} results</span>
+        <span className="text-xs text-[var(--text-2)] self-center ml-auto">{data?.total ?? '—'} results</span>
       </div>
 
+      {/* Cross-run duplicates banner */}
+      {dupes && dupes.total > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg mb-4"
+             style={{ background: 'rgba(240,180,41,.08)', border: '1px solid rgba(240,180,41,.35)' }}>
+          <span className="text-xs" style={{ color: 'var(--amber)' }}>
+            ⚠ {dupes.total} duplicate group(s) — same vuln found in multiple runs
+          </span>
+          <div className="flex-1" />
+          <button className="btn btn-warning" onClick={resolveAllDupes} disabled={resolving}>
+            {resolving ? 'Resolving…' : 'Resolve older duplicates'}
+          </button>
+        </div>
+      )}
+
       {/* Table */}
-      <div className="border border-[#30363d] rounded-lg overflow-hidden">
+      <div className="border border-[var(--border)] rounded-lg overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-[#30363d] bg-[#161b22]">
-              <th className="text-left px-4 py-2 text-[#8b949e] font-medium">Severity</th>
-              <th className="text-left px-4 py-2 text-[#8b949e] font-medium">Type</th>
-              <th className="text-left px-4 py-2 text-[#8b949e] font-medium">Name / Template</th>
-              <th className="text-left px-4 py-2 text-[#8b949e] font-medium">Host</th>
-              <th className="text-left px-4 py-2 text-[#8b949e] font-medium">Run</th>
-              <th className="text-left px-4 py-2 text-[#8b949e] font-medium">Status</th>
+            <tr className="border-b border-[var(--border)] bg-[var(--surface)]">
+              <th className="text-left px-4 py-2 text-[var(--text-2)] font-medium">Severity</th>
+              <th className="text-left px-4 py-2 text-[var(--text-2)] font-medium">Type</th>
+              <th className="text-left px-4 py-2 text-[var(--text-2)] font-medium">Name / Template</th>
+              <th className="text-left px-4 py-2 text-[var(--text-2)] font-medium">Host</th>
+              <th className="text-left px-4 py-2 text-[var(--text-2)] font-medium">Run</th>
+              <th className="text-left px-4 py-2 text-[var(--text-2)] font-medium">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={6} className="text-center py-8 text-[#8b949e]">Loading…</td></tr>
+              <tr><td colSpan={6} className="text-center py-8 text-[var(--text-2)]">Loading…</td></tr>
             )}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-12 text-[#8b949e]">
+              <tr><td colSpan={6} className="text-center py-12 text-[var(--text-2)]">
                 No findings match the current filter.
                 {data?.total === 0 && <div className="mt-2 text-[11px]">Run a workflow with nuclei, httpx or naabu steps to start populating findings.</div>}
               </td></tr>
             )}
             {!loading && items.map(f => (
-              <tr key={f.id} className="border-b border-[#21262d] hover:bg-[#161b22] transition-colors">
-                <td className="px-4 py-2"><SevBadge sev={f.severity} /></td>
-                <td className="px-4 py-2 font-mono text-[#8b949e]">{f.kind}</td>
-                <td className="px-4 py-2 max-w-xs">
-                  <div className="truncate text-[#e6edf3]">{f.name || f.template_id || f.host}</div>
-                  {f.template_id && f.name && <div className="text-[10px] text-[#8b949e] font-mono truncate">{f.template_id}</div>}
-                </td>
-                <td className="px-4 py-2 font-mono max-w-[200px] truncate" title={f.host}>{f.host}</td>
-                <td className="px-4 py-2">
-                  <Link to={`/runs/${f.run_id}`} className="text-[#58a6ff] hover:underline font-mono">
-                    {f.run_id}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">
-                  <select
-                    value={f.status}
-                    onChange={e => changeStatus(f.id, e.target.value)}
-                    className="bg-transparent text-[10px] font-mono border border-[#30363d] rounded px-1.5 py-0.5 cursor-pointer text-[#8b949e]"
-                  >
-                    <option value="open">OPEN</option>
-                    <option value="fp">FALSE+</option>
-                    <option value="resolved">RESOLVED</option>
-                  </select>
-                </td>
-              </tr>
+              <React.Fragment key={f.id}>
+                <tr className="border-b border-[var(--surface-2)] hover:bg-[var(--surface-2)] transition-colors cursor-pointer"
+                    onClick={() => openDetail(f)}>
+                  <td className="px-4 py-2"><SevBadge sev={f.severity} /></td>
+                  <td className="px-4 py-2 font-mono text-[var(--text-2)]">{f.kind}</td>
+                  <td className="px-4 py-2 max-w-xs">
+                    <div className="truncate text-[var(--text)]">{f.name || f.template_id || f.host}</div>
+                    {f.template_id && f.name && <div className="text-[10px] text-[var(--text-2)] font-mono truncate">{f.template_id}</div>}
+                  </td>
+                  <td className="px-4 py-2 font-mono max-w-[200px] truncate" title={f.host}>{f.host}</td>
+                  <td className="px-4 py-2">
+                    <Link to={`/runs/${f.run_id}`} onClick={e => e.stopPropagation()}
+                          className="text-[var(--accent)] hover:underline font-mono">
+                      {f.run_id}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={f.status}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => changeStatus(f.id, e.target.value)}
+                      className="bg-transparent text-[10px] font-mono border border-[var(--border)] rounded px-1.5 py-0.5 cursor-pointer text-[var(--text-2)]"
+                    >
+                      <option value="open">OPEN</option>
+                      <option value="fp">FALSE+</option>
+                      <option value="resolved">RESOLVED</option>
+                    </select>
+                  </td>
+                </tr>
+                {expandedId === f.id && (
+                  <tr className="border-b border-[var(--surface-2)]" style={{ background: 'var(--bg-soft)' }}>
+                    <td colSpan={6} className="px-4 py-3">
+                      <div className="space-y-2 fade-in" onClick={e => e.stopPropagation()}>
+                        {f.url && (
+                          <p className="text-[11px] font-mono break-all" style={{ color: 'var(--accent)' }}>{f.url}</p>
+                        )}
+                        {f.description && (
+                          <p className="text-[11px]" style={{ color: 'var(--text-2)' }}>{f.description}</p>
+                        )}
+                        {f.evidence && (
+                          <pre className="text-[10px] font-mono p-2 rounded overflow-x-auto"
+                               style={{ background: 'var(--surface)', color: 'var(--text-2)' }}>{f.evidence}</pre>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-1">
+                          <div>
+                            <label className="label">Analyst notes</label>
+                            <textarea className="input" rows={2} value={draft.notes}
+                                      placeholder="Triage state, impact assessment, next step…"
+                                      onChange={e => setDraft(d => ({ ...d, notes: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label className="label">Tags (comma-separated)</label>
+                            <input className="input" value={draft.tags} placeholder="needs-poc, chained, program-x"
+                                   onChange={e => setDraft(d => ({ ...d, tags: e.target.value }))} />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <button className="btn btn-ghost" onClick={() => setExpandedId(null)}>Close</button>
+                          <button className="btn btn-accent" onClick={() => saveDetail(f)}>Save notes</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
           </tbody>
         </table>

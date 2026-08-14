@@ -31,20 +31,29 @@ class RunCreate(BaseModel):
     continue_on_error: bool = False
 
 
-@router.post("/runs", status_code=201)
-def create_run(body: RunCreate, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
-    wf_path = (WORKFLOWS_DIR / body.workflow).resolve()
+def launch_run(
+    db,
+    workflow: str,
+    target: str,
+    vars_dict: dict[str, str] | None = None,
+    out: str | None = None,
+    resume: bool = False,
+    continue_on_error: bool = False,
+    origin: str | None = None,
+) -> Run:
+    """Shared run-creation path (UI, schedules, resume). Returns the queued Run."""
+    wf_path = (WORKFLOWS_DIR / workflow).resolve()
     if not wf_path.is_relative_to(WORKFLOWS_DIR.resolve()):
         raise HTTPException(400, "Invalid workflow path")
     if not wf_path.exists():
-        raise HTTPException(404, f"Workflow not found: {body.workflow}")
+        raise HTTPException(404, f"Workflow not found: {workflow}")
 
-    if body.out:
-        workspace = str((RUNS_DIR / body.out).resolve())
-        if not (RUNS_DIR / body.out).resolve().is_relative_to(RUNS_DIR.resolve()):
+    if out:
+        workspace = str((RUNS_DIR / out).resolve())
+        if not (RUNS_DIR / out).resolve().is_relative_to(RUNS_DIR.resolve()):
             raise HTTPException(400, "Invalid output path")
     else:
-        safe_target = re.sub(r"[^A-Za-z0-9._-]+", "_", body.target)
+        safe_target = re.sub(r"[^A-Za-z0-9._-]+", "_", target)
         ts = time.strftime("%Y%m%d-%H%M%S")
         workspace = str(RUNS_DIR / safe_target / ts)
 
@@ -58,33 +67,65 @@ def create_run(body: RunCreate, db: Session = Depends(get_db_dep)) -> dict[str, 
     run_id = uuid.uuid4().hex[:12]
     run = Run(
         id=run_id,
-        workflow=body.workflow,
-        target=body.target,
+        workflow=workflow,
+        target=target,
         workspace=workspace,
         steps_json=steps_json,
-        vars_json=json.dumps(
-            {k: v for item in body.vars for k, v in [item.split("=", 1)]} if body.vars else {}
-        ),
-        out_dir=body.out,
-        continue_on_error=body.continue_on_error,
-        resume=body.resume,
+        vars_json=json.dumps(vars_dict or {}),
+        out_dir=out,
+        continue_on_error=continue_on_error,
+        resume=resume,
         status="queued",
     )
     db.add(run)
     db.commit()
 
-    cmd = [sys.executable, "-m", "k1nzr3c0n", "run", "-w", str(wf_path), "-t", body.target, "-o", workspace]
-    if body.resume:
+    cmd = [sys.executable, "-m", "k1nzr3c0n", "run", "-w", str(wf_path), "-t", target, "-o", workspace]
+    if resume:
         cmd.append("--resume")
-    if body.continue_on_error:
+    if continue_on_error:
         cmd.append("--continue-on-error")
-    if body.vars:
-        cmd += ["--vars"] + body.vars
+    if vars_dict:
+        cmd += ["--vars"] + [f"{k}={v}" for k, v in vars_dict.items()]
 
     task = execute_run.delay(run_id, cmd)
     run.celery_task_id = task.id
     db.commit()
+    return run
+
+
+@router.post("/runs", status_code=201)
+def create_run(body: RunCreate, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
+    # Deny-wins scope gate: registered targets marked oos block run creation
+    # (unregistered targets pass through but land in the scope audit log).
+    from ...scope import check_target_scope
+    allowed, reason = check_target_scope(db, body.target)
+    if not allowed:
+        raise HTTPException(403, f"Out of scope: {reason}")
+
+    vars_dict = {k: v for item in (body.vars or []) for k, v in [item.split("=", 1)]}
+    run = launch_run(
+        db,
+        workflow=body.workflow,
+        target=body.target,
+        vars_dict=vars_dict,
+        out=body.out,
+        resume=body.resume,
+        continue_on_error=body.continue_on_error,
+        origin="ui",
+    )
     return run_to_dict(run)
+
+
+@router.get("/runs/{run_id}/new-assets")
+def run_new_assets(run_id: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
+    """Assets discovered for the first time in this run (vs earlier runs)."""
+    from ...db import NewAsset, new_asset_to_dict
+    run = db_get(db, Run, run_id)
+    if not run:
+        raise HTTPException(404, "Run not found")
+    rows = db.query(NewAsset).filter(NewAsset.run_id == run_id).order_by(NewAsset.host).all()
+    return {"total": len(rows), "items": [new_asset_to_dict(a) for a in rows]}
 
 
 @router.get("/runs")

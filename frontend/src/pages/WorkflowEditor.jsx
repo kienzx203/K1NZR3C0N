@@ -66,11 +66,11 @@ const STEP_PH = {
 }
 
 const SC = {
-  pending: { color: '#484f58', icon: '○', glow: false },
+  pending: { color: 'var(--text-3)', icon: '○', glow: false },
   running: { color: '#3fb950', icon: '●', glow: true },
   ok:      { color: '#3fb950', icon: '✓', glow: false },
   failed:  { color: '#f85149', icon: '✗', glow: false },
-  skipped: { color: '#484f58', icon: '⊘', glow: false },
+  skipped: { color: 'var(--text-3)', icon: '⊘', glow: false },
   paused:  { color: '#f0b429', icon: '⏸', glow: false },
 }
 
@@ -1866,7 +1866,7 @@ function CommandBuilder({ stepId, currentCmd, vars, onApply }) {
 
   if (!def) {
     return (
-      <div style={{ fontSize:10, color:'#484f58', fontStyle:'italic', padding:'8px 0' }}>
+      <div style={{ fontSize:10, color:'var(--text-3)', fontStyle:'italic', padding:'8px 0' }}>
         No flag catalog for <code style={{ color:'#f0b429' }}>{stepId}</code> yet.
         Use the raw command editor above.
       </div>
@@ -1893,13 +1893,13 @@ function CommandBuilder({ stepId, currentCmd, vars, onApply }) {
           <div key={cat.label} style={{ marginBottom: 4 }}>
             <button onClick={() => setOpenCat(isOpen ? '__none__' : cat.label)}
               style={{
-                width:'100%', textAlign:'left', background: isOpen ? '#161b22' : '#0d1117',
-                border: `1px solid ${isOpen ? '#30363d' : '#21262d'}`,
+                width:'100%', textAlign:'left', background: isOpen ? 'var(--surface)' : 'var(--bg-soft)',
+                border: `1px solid ${isOpen ? 'var(--border)' : 'var(--surface-2)'}`,
                 borderRadius: isOpen ? '6px 6px 0 0' : 6,
                 padding:'6px 10px', cursor:'pointer',
                 display:'flex', alignItems:'center', justifyContent:'space-between',
               }}>
-              <span style={{ fontSize:10, fontWeight:700, color: isOpen ? '#e6edf3' : '#8b949e',
+              <span style={{ fontSize:10, fontWeight:700, color: isOpen ? 'var(--text)' : 'var(--text-2)',
                 letterSpacing:'.03em' }}>{cat.label}</span>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                 {activeCount > 0 && (
@@ -1908,13 +1908,13 @@ function CommandBuilder({ stepId, currentCmd, vars, onApply }) {
                     {activeCount} active
                   </span>
                 )}
-                <span style={{ fontSize:9, color:'#484f58' }}>{isOpen ? '▲' : '▼'}</span>
+                <span style={{ fontSize:9, color:'var(--text-3)' }}>{isOpen ? '▲' : '▼'}</span>
               </div>
             </button>
 
             {isOpen && (
               <div style={{
-                background:'#161b22', border:'1px solid #30363d', borderTop:'none',
+                background:'var(--surface)', border:'1px solid #30363d', borderTop:'none',
                 borderRadius:'0 0 6px 6px', padding:'8px 10px',
                 display:'flex', flexDirection:'column', gap:7,
               }}>
@@ -1934,18 +1934,18 @@ function CommandBuilder({ stepId, currentCmd, vars, onApply }) {
                             style={{ accentColor:'#58a6ff', width:12, height:12, flexShrink:0 }} />
                         ) : (
                           <div style={{ width:8, height:8, borderRadius:'50%', flexShrink:0,
-                            background: isOn ? '#58a6ff' : '#30363d' }} />
+                            background: isOn ? '#58a6ff' : 'var(--border)' }} />
                         )}
-                        <span style={{ fontSize:9.5, fontWeight:700, color: isOn ? '#e6edf3' : '#8b949e',
+                        <span style={{ fontSize:9.5, fontWeight:700, color: isOn ? 'var(--text)' : 'var(--text-2)',
                           flex:1 }}>{f.label}</span>
-                        <code style={{ fontSize:8.5, color:'#484f58', fontFamily:'monospace' }}>{f.flag}</code>
+                        <code style={{ fontSize:8.5, color:'var(--text-3)', fontFamily:'monospace' }}>{f.flag}</code>
                         {risk && (
                           <span style={{ fontSize:7.5, color:risk.color, border:`1px solid ${risk.border}`,
                             borderRadius:3, padding:'1px 4px', fontWeight:700 }}>{risk.label}</span>
                         )}
                       </div>
                       {/* Description */}
-                      <div style={{ fontSize:9, color:'#484f58', marginLeft:18, marginBottom: f.type!=='bool' ? 4 : 0,
+                      <div style={{ fontSize:9, color:'var(--text-3)', marginLeft:18, marginBottom: f.type!=='bool' ? 4 : 0,
                         lineHeight:1.5 }}>{f.desc}</div>
                       {/* Value input */}
                       {f.type === 'enum' && (
@@ -1978,7 +1978,7 @@ function CommandBuilder({ stepId, currentCmd, vars, onApply }) {
       {/* Apply button + preview */}
       <div style={{ marginTop: 8, padding:'8px 10px', background:'#0a1929',
         border:'1px solid #0d2d4a', borderRadius:6 }}>
-        <div style={{ fontSize:8.5, color:'#484f58', marginBottom:5, fontWeight:700,
+        <div style={{ fontSize:8.5, color:'var(--text-3)', marginBottom:5, fontWeight:700,
           letterSpacing:'.06em', textTransform:'uppercase' }}>Preview</div>
         <div style={{ fontFamily:'monospace', fontSize:8.5, color:'#58a6ff99',
           wordBreak:'break-all', whiteSpace:'pre-wrap', lineHeight:1.6, marginBottom:8 }}>
@@ -2099,8 +2099,8 @@ function wfToGraph(wf, savedPositions = {}, onDelete) {
         id: `${dep}→${step.id}`,
         source: dep, target: step.id,
         type: 'smoothstep',
-        style: { stroke: '#30363d', strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#30363d', width: 10, height: 10 },
+        style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--border)', width: 10, height: 10 },
       })
     })
   })
@@ -2155,9 +2155,9 @@ function StepNode({ data, selected }) {
       </NodeToolbar>
 
       <Handle type="target" position={Position.Left}
-        style={{ background: '#30363d', border: 'none', width: 8, height: 8, left: -4 }} />
+        style={{ background: 'var(--border)', border: 'none', width: 8, height: 8, left: -4 }} />
       <div style={{
-        background: ph.bg, border: `1.5px solid ${selected ? ph.color : (sc ? sc.color : '#21262d')}`,
+        background: ph.bg, border: `1.5px solid ${selected ? ph.color : (sc ? sc.color : 'var(--surface-2)')}`,
         borderRadius: 8, padding: '8px 12px', minWidth: 230, minHeight: 80,
         opacity: isOn === false ? 0.38 : 1,
         boxShadow: sc?.glow ? `0 0 14px ${sc.color}55` : selected ? `0 0 0 2px ${ph.color}33` : 'none',
@@ -2171,30 +2171,30 @@ function StepNode({ data, selected }) {
             {ph.icon} {ph.label}
           </span>
           <div style={{ display:'flex', alignItems:'center', gap: 5 }}>
-            {!isOn && <span style={{ fontSize:8.5, color:'#484f58', letterSpacing:'.05em' }}>DISABLED</span>}
+            {!isOn && <span style={{ fontSize:8.5, color:'var(--text-3)', letterSpacing:'.05em' }}>DISABLED</span>}
             {sc && <span style={{ fontSize:11, color:sc.color,
               animation: sc.glow ? 'nodeGlow 1.4s ease-in-out infinite' : 'none' }}>{sc.icon}</span>}
           </div>
         </div>
         {/* Step ID */}
-        <div style={{ fontSize:11.5, fontWeight:700, color:'#e6edf3', fontFamily:'monospace', marginBottom:2 }}>
+        <div style={{ fontSize:11.5, fontWeight:700, color:'var(--text)', fontFamily:'monospace', marginBottom:2 }}>
           {step.id}
         </div>
         {/* Name */}
         {step.name && (
-          <div style={{ fontSize:10, color:'#8b949e', lineHeight:1.3,
+          <div style={{ fontSize:10, color:'var(--text-2)', lineHeight:1.3,
             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:206 }}>
             {step.name}
           </div>
         )}
         {/* Tags */}
         <div style={{ display:'flex', gap:4, marginTop:5, flexWrap:'wrap' }}>
-          {step.optional && <NodeTag label="optional" c="#484f58" />}
+          {step.optional && <NodeTag label="optional" c="var(--text-3)" />}
           {step.when && step.when !== 'true' && <NodeTag label="when" c={ph.color} />}
-          {step.timeout && <NodeTag label={step.timeout} c="#484f58" />}
+          {step.timeout && <NodeTag label={step.timeout} c="var(--text-3)" />}
           {hasFanout && <NodeTag label={`${step.fanout.length}× parallel`} c={ph.color} />}
-          {step.skip_if_exists && <NodeTag label="resume" c="#484f58" />}
-          {(step.retries > 0 || step.retries === '1') && <NodeTag label={`retry×${step.retries}`} c="#484f58" />}
+          {step.skip_if_exists && <NodeTag label="resume" c="var(--text-3)" />}
+          {(step.retries > 0 || step.retries === '1') && <NodeTag label={`retry×${step.retries}`} c="var(--text-3)" />}
         </div>
         {/* Fanout sub-steps */}
         {hasFanout && (
@@ -2204,10 +2204,10 @@ function StepNode({ data, selected }) {
               const ssc = ss ? SC[ss] : null
               return (
                 <div key={sub.id} style={{
-                  fontSize:9.5, color:'#8b949e', fontFamily:'monospace',
+                  fontSize:9.5, color:'var(--text-2)', fontFamily:'monospace',
                   display:'flex', alignItems:'center', gap:5, padding:'1.5px 0',
                 }}>
-                  <span style={{ color:ssc?.color || '#484f58', fontSize:9 }}>{ssc?.icon || '○'}</span>
+                  <span style={{ color:ssc?.color || 'var(--text-3)', fontSize:9 }}>{ssc?.icon || '○'}</span>
                   {sub.id}
                 </div>
               )
@@ -2216,7 +2216,7 @@ function StepNode({ data, selected }) {
         )}
       </div>
       <Handle type="source" position={Position.Right}
-        style={{ background: '#30363d', border: 'none', width: 8, height: 8, right: -4 }} />
+        style={{ background: 'var(--border)', border: 'none', width: 8, height: 8, right: -4 }} />
     </>
   )
 }
@@ -2249,16 +2249,16 @@ function FanoutSubStep({ sub, ph, vars, onChange }) {
   const resolvedId = resolveSubStepId(sub.id, sub.run || '')
   const hasDef = !!TOOL_FLAGS[resolvedId]
   return (
-    <div style={{ marginBottom:8, background:'#161b22', borderRadius:6, border:'1px solid #21262d', overflow:'hidden' }}>
+    <div style={{ marginBottom:8, background:'var(--surface)', borderRadius:6, border:'1px solid #21262d', overflow:'hidden' }}>
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px',
-        borderBottom:'1px solid #21262d', background:'#0d1117' }}>
+        borderBottom:'1px solid #21262d', background:'var(--bg-soft)' }}>
         <span style={{ fontSize:10, fontWeight:700, color:ph.color, fontFamily:'monospace', flex:1 }}>{sub.id}</span>
         {hasDef && (
           <button onClick={() => setShowBuilder(p => !p)} style={{
             background: showBuilder ? '#0a1f0e' : 'none',
-            border: `1px solid ${showBuilder ? '#3fb95044' : '#30363d'}`,
-            borderRadius:4, color: showBuilder ? '#3fb950' : '#484f58',
+            border: `1px solid ${showBuilder ? '#3fb95044' : 'var(--border)'}`,
+            borderRadius:4, color: showBuilder ? '#3fb950' : 'var(--text-3)',
             fontSize:8.5, padding:'1px 7px', cursor:'pointer', fontWeight:700,
           }}>⚙ Flags</button>
         )}
@@ -2297,13 +2297,13 @@ function VarRow({ varKey, vars, onVarChange, ph }) {
 
     return (
       <div style={{
-        marginBottom: 8, background: '#0d1117',
+        marginBottom: 8, background: 'var(--bg-soft)',
         border: '1px solid #21262d', borderRadius: 7, overflow: 'hidden',
       }}>
         {/* ── Var header row ── */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6,
-          padding: '6px 10px', background: '#161b22',
+          padding: '6px 10px', background: 'var(--surface)',
           borderBottom: '1px solid #21262d',
           cursor: doc?.detail ? 'pointer' : 'default',
         }} onClick={() => doc?.detail && setExpanded(p => !p)}>
@@ -2318,17 +2318,17 @@ function VarRow({ varKey, vars, onVarChange, ph }) {
             }}>{risk.label}</span>
           )}
           {doc?.unit && (
-            <span style={{ fontSize: 8.5, color: '#484f58' }}>{doc.unit}</span>
+            <span style={{ fontSize: 8.5, color: 'var(--text-3)' }}>{doc.unit}</span>
           )}
           {doc?.detail && (
-            <span style={{ fontSize: 9, color: '#484f58' }}>{expanded ? '▲' : '▼'}</span>
+            <span style={{ fontSize: 9, color: 'var(--text-3)' }}>{expanded ? '▲' : '▼'}</span>
           )}
         </div>
 
         <div style={{ padding: '7px 10px' }}>
           {/* ── Description ── */}
           {doc?.desc && (
-            <div style={{ fontSize: 9.5, color: '#8b949e', marginBottom: 6, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 9.5, color: 'var(--text-2)', marginBottom: 6, lineHeight: 1.5 }}>
               {doc.desc}
             </div>
           )}
@@ -2341,7 +2341,7 @@ function VarRow({ varKey, vars, onVarChange, ph }) {
                 style={{ accentColor: ph.color, width:14, height:14 }} />
               <span style={{
                 fontSize: 11, fontWeight: 700,
-                color: val === 'true' ? '#3fb950' : '#484f58',
+                color: val === 'true' ? '#3fb950' : 'var(--text-3)',
               }}>
                 {val === 'true' ? '✓ enabled' : '○ disabled'}
               </span>
@@ -2371,8 +2371,8 @@ function VarRow({ varKey, vars, onVarChange, ph }) {
                   style={{
                     fontSize: 8.5, fontFamily:'monospace', cursor:'pointer',
                     background: val === p.value ? '#0a1929' : 'none',
-                    border: `1px solid ${val === p.value ? '#58a6ff55' : '#21262d'}`,
-                    color: val === p.value ? '#58a6ff' : '#484f58',
+                    border: `1px solid ${val === p.value ? '#58a6ff55' : 'var(--surface-2)'}`,
+                    color: val === p.value ? '#58a6ff' : 'var(--text-3)',
                     borderRadius: 4, padding: '2px 7px',
                     transition: 'all .1s',
                   }}>
@@ -2396,7 +2396,7 @@ function VarRow({ varKey, vars, onVarChange, ph }) {
             <div style={{
               marginTop: 7, padding: '7px 10px',
               background: '#0a1929', border: '1px solid #0d2d4a',
-              borderRadius: 5, fontSize: 9.5, color: '#8b949e', lineHeight: 1.65,
+              borderRadius: 5, fontSize: 9.5, color: 'var(--text-2)', lineHeight: 1.65,
             }}>
               {doc.detail}
             </div>
@@ -2412,7 +2412,7 @@ function Section({ label, children, action }) {
     <div style={{ borderTop: '1px solid #21262d', paddingTop: 11 }}>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
         marginBottom: 8 }}>
-        <span style={{ fontSize: 8.5, color: '#484f58', fontWeight: 700,
+        <span style={{ fontSize: 8.5, color: 'var(--text-3)', fontWeight: 700,
           letterSpacing: '.08em', textTransform: 'uppercase' }}>{label}</span>
         {action}
       </div>
@@ -2459,7 +2459,7 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
       if (p === '{target}')           return <span key={i} style={{ color: '#3fb950' }}>{p}</span>
       if (p === '{workspace}')        return <span key={i} style={{ color: '#a371f7' }}>{p}</span>
       if (/^\{steps\.\w+\.\w+\}$/.test(p)) return <span key={i} style={{ color: '#79c0ff' }}>{p}</span>
-      return <span key={i} style={{ color: '#e6edf3' }}>{p}</span>
+      return <span key={i} style={{ color: 'var(--text)' }}>{p}</span>
     })
   }
 
@@ -2471,7 +2471,7 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
 
   return (
     <div style={{
-      width: 320, borderLeft: '1px solid #30363d', background: '#0d1117',
+      width: 320, borderLeft: '1px solid #30363d', background: 'var(--bg-soft)',
       display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto',
     }}>
       {/* ── Header ── */}
@@ -2484,15 +2484,15 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
             letterSpacing: '.07em', textTransform: 'uppercase', marginBottom: 3 }}>
             {ph.icon} {ph.label}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#e6edf3', fontFamily: 'monospace', lineHeight: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', lineHeight: 1 }}>
             {step.id}
           </div>
           {step.name && step.name !== step.id && (
-            <div style={{ fontSize: 10, color: '#8b949e', marginTop: 3 }}>{step.name}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-2)', marginTop: 3 }}>{step.name}</div>
           )}
         </div>
         <button onClick={onClose} style={{
-          background: 'none', border: 'none', color: '#8b949e',
+          background: 'none', border: 'none', color: 'var(--text-2)',
           cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 2px',
         }}>×</button>
       </div>
@@ -2533,37 +2533,37 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
                   fontSize: 9, fontFamily:'monospace', color:'#3fb950',
                   border:'1px solid #3fb95033', background:'#0a1f0e',
                   borderRadius:4, padding:'2px 7px', cursor:'help',
-                }}>{'{target}'} <span style={{ color:'#484f58' }}>run-time</span></span>
+                }}>{'{target}'} <span style={{ color:'var(--text-3)' }}>run-time</span></span>
               )}
               {hasWs && (
                 <span title="Auto-created output directory per run" style={{
                   fontSize: 9, fontFamily:'monospace', color:'#a371f7',
                   border:'1px solid #a371f733', background:'#150d26',
                   borderRadius:4, padding:'2px 7px', cursor:'help',
-                }}>{'{workspace}'} <span style={{ color:'#484f58' }}>auto</span></span>
+                }}>{'{workspace}'} <span style={{ color:'var(--text-3)' }}>auto</span></span>
               )}
               {stepRefs.map(ref => (
                 <span key={ref} title={`Output from step: ${ref.split('.')[0]}`} style={{
                   fontSize: 9, fontFamily:'monospace', color:'#79c0ff',
                   border:'1px solid #79c0ff33', background:'#0a1929',
                   borderRadius:4, padding:'2px 7px', cursor:'help',
-                }}>{'{' + ref + '}'} <span style={{ color:'#484f58' }}>step</span></span>
+                }}>{'{' + ref + '}'} <span style={{ color:'var(--text-3)' }}>step</span></span>
               ))}
             </div>
           )}
 
           {/* Editable {vars.X} fields */}
           {usedVarKeys.length > 0 ? (
-            <div style={{ background:'#161b22', borderRadius:6, padding:'8px 10px',
+            <div style={{ background:'var(--surface)', borderRadius:6, padding:'8px 10px',
               border:'1px solid #21262d' }}>
               {usedVarKeys.map(k => <VarRow key={k} varKey={k} vars={vars} onVarChange={onVarChange} ph={ph} />)}
-              <div style={{ fontSize: 9, color: '#484f58', marginTop: 4, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 9, color: 'var(--text-3)', marginTop: 4, lineHeight: 1.5 }}>
                 Changes apply globally to this workflow's vars.
-                See all vars in the <strong style={{ color:'#8b949e' }}>Vars</strong> tab.
+                See all vars in the <strong style={{ color:'var(--text-2)' }}>Vars</strong> tab.
               </div>
             </div>
           ) : (
-            <div style={{ fontSize: 10, color: '#484f58', fontStyle: 'italic' }}>
+            <div style={{ fontSize: 10, color: 'var(--text-3)', fontStyle: 'italic' }}>
               No <code style={{ color:'#f0b429', fontSize:9 }}>{'{vars.X}'}</code> in this command
             </div>
           )}
@@ -2585,7 +2585,7 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
               ['run_on_failed_deps','⚡ Run even if dependencies failed'],
             ].map(([k, label]) => (
               <label key={k} style={{ display:'flex', alignItems:'center', gap:7,
-                cursor:'pointer', fontSize:10.5, color:'#8b949e', userSelect:'none' }}>
+                cursor:'pointer', fontSize:10.5, color:'var(--text-2)', userSelect:'none' }}>
                 <input type="checkbox" checked={!!step[k]}
                   onChange={e => set(k, e.target.checked || undefined)}
                   style={{ accentColor: ph.color, width:12, height:12, flexShrink:0 }} />
@@ -2614,28 +2614,28 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
           action={
             <div style={{ display:'flex', gap:4 }}>
               <button onClick={() => setShowPreview(p => !p)} style={{
-                background: showPreview ? '#1c2128' : 'none',
-                border: `1px solid ${showPreview ? '#58a6ff44' : '#30363d'}`,
-                borderRadius:4, color: showPreview ? '#58a6ff' : '#8b949e',
+                background: showPreview ? 'var(--surface-2)' : 'none',
+                border: `1px solid ${showPreview ? '#58a6ff44' : 'var(--border)'}`,
+                borderRadius:4, color: showPreview ? '#58a6ff' : 'var(--text-2)',
                 fontSize:9, padding:'2px 7px', cursor:'pointer', fontWeight:700,
               }}>◉ Preview</button>
               <button onClick={() => { setShowRawCmd(p => !p); setShowBuilder(false) }} style={{
-                background: showRawCmd ? '#1c2128' : 'none',
-                border: `1px solid ${showRawCmd ? '#a371f744' : '#30363d'}`,
-                borderRadius:4, color: showRawCmd ? '#a371f7' : '#8b949e',
+                background: showRawCmd ? 'var(--surface-2)' : 'none',
+                border: `1px solid ${showRawCmd ? '#a371f744' : 'var(--border)'}`,
+                borderRadius:4, color: showRawCmd ? '#a371f7' : 'var(--text-2)',
                 fontSize:9, padding:'2px 7px', cursor:'pointer', fontWeight:700,
               }}>⌨ Edit</button>
               {TOOL_FLAGS[step.id] && (
                 <button onClick={() => { setShowBuilder(p => !p); setShowRawCmd(false) }} style={{
-                  background: showBuilder ? '#1c2128' : 'none',
-                  border: `1px solid ${showBuilder ? '#3fb95044' : '#30363d'}`,
-                  borderRadius:4, color: showBuilder ? '#3fb950' : '#8b949e',
+                  background: showBuilder ? 'var(--surface-2)' : 'none',
+                  border: `1px solid ${showBuilder ? '#3fb95044' : 'var(--border)'}`,
+                  borderRadius:4, color: showBuilder ? '#3fb950' : 'var(--text-2)',
                   fontSize:9, padding:'2px 7px', cursor:'pointer', fontWeight:700,
                 }}>⚙ Flags</button>
               )}
               <button onClick={copyCmd} style={{
                 background:'none', border:'1px solid #30363d',
-                borderRadius:4, color: copiedCmd ? '#3fb950' : '#8b949e',
+                borderRadius:4, color: copiedCmd ? '#3fb950' : 'var(--text-2)',
                 fontSize:9, padding:'2px 7px', cursor:'pointer',
               }}>{copiedCmd ? '✓' : '⎘'}</button>
             </div>
@@ -2644,12 +2644,12 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
           {/* Syntax-highlighted display */}
           {!showRawCmd && (
             <div style={{
-              background:'#161b22', border:'1px solid #21262d', borderRadius:6,
+              background:'var(--surface)', border:'1px solid #21262d', borderRadius:6,
               padding:'8px 10px', fontFamily:'monospace', fontSize:9.5, lineHeight:1.65,
-              wordBreak:'break-all', whiteSpace:'pre-wrap', color:'#8b949e',
+              wordBreak:'break-all', whiteSpace:'pre-wrap', color:'var(--text-2)',
               maxHeight:140, overflowY:'auto',
             }}>
-              {run ? highlightCmd(run) : <span style={{ color:'#484f58', fontStyle:'italic' }}>no command</span>}
+              {run ? highlightCmd(run) : <span style={{ color:'var(--text-3)', fontStyle:'italic' }}>no command</span>}
             </div>
           )}
 
@@ -2664,7 +2664,7 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
           {/* Resolved preview */}
           {showPreview && (
             <div style={{ marginTop:6 }}>
-              <div style={{ fontSize:8.5, color:'#484f58', marginBottom:4, fontWeight:700,
+              <div style={{ fontSize:8.5, color:'var(--text-3)', marginBottom:4, fontWeight:700,
                 letterSpacing:'.06em', textTransform:'uppercase' }}>
                 Resolved preview
               </div>
@@ -2674,7 +2674,7 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
                 wordBreak:'break-all', whiteSpace:'pre-wrap', color:'#58a6ff99',
                 maxHeight:120, overflowY:'auto',
               }}>
-                {resolvePreview(run) || <span style={{ color:'#484f58' }}>—</span>}
+                {resolvePreview(run) || <span style={{ color:'var(--text-3)' }}>—</span>}
               </div>
             </div>
           )}
@@ -2733,11 +2733,11 @@ function ConfigPanel({ step, vars, onChange, onVarChange, onClose }) {
 function Field({ label, hint, children }) {
   return (
     <div>
-      <div style={{ fontSize: 9, color: '#8b949e', fontWeight: 700,
+      <div style={{ fontSize: 9, color: 'var(--text-2)', fontWeight: 700,
         letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4,
         display: 'flex', gap: 6 }}>
         {label}
-        {hint && <span style={{ fontWeight:400, textTransform:'none', color:'#484f58',
+        {hint && <span style={{ fontWeight:400, textTransform:'none', color:'var(--text-3)',
           fontFamily:'monospace' }}>{hint}</span>}
       </div>
       {children}
@@ -2829,7 +2829,7 @@ function VarsPanel({ vars, onChange }) {
         !keys || keys.length === 0 ? null : (
           <div key={group}>
             {/* Group header */}
-            <div style={{ fontSize: 9, color: '#484f58', fontWeight: 700,
+            <div style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 700,
               letterSpacing: '.08em', textTransform: 'uppercase',
               borderBottom: '1px solid #21262d', paddingBottom: 5, marginBottom: 8 }}>
               {group}
@@ -2844,7 +2844,7 @@ function VarsPanel({ vars, onChange }) {
                     <input type="checkbox" checked={vars[k] === 'true'}
                       onChange={e => onChange(k, e.target.checked ? 'true' : 'false')}
                       style={{ accentColor: '#58a6ff', width:13, height:13, flexShrink:0 }} />
-                    <span style={{ fontSize:10, color: vars[k]==='true' ? '#e6edf3' : '#484f58',
+                    <span style={{ fontSize:10, color: vars[k]==='true' ? 'var(--text)' : 'var(--text-3)',
                       fontFamily:'monospace', lineHeight:1.3 }} title={k}>
                       {k.replace(/^run_/, '')}
                     </span>
@@ -2856,7 +2856,7 @@ function VarsPanel({ vars, onChange }) {
             {/* Text vars — stacked (label top, full-width input below) */}
             {keys.filter(k => !['true','false'].includes(String(vars[k]))).map(k => (
               <div key={k} style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 9, color: '#8b949e', fontFamily:'monospace',
+                <div style={{ fontSize: 9, color: 'var(--text-2)', fontFamily:'monospace',
                   marginBottom: 3, letterSpacing: '.02em' }}>
                   {k}
                 </div>
@@ -2876,7 +2876,7 @@ function VarsPanel({ vars, onChange }) {
 
       {/* Add new var */}
       <div style={{ borderTop: '1px solid #21262d', paddingTop: 12 }}>
-        <div style={{ fontSize: 9, color: '#484f58', fontWeight: 700,
+        <div style={{ fontSize: 9, color: 'var(--text-3)', fontWeight: 700,
           letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 8 }}>
           Add Variable
         </div>
@@ -2960,7 +2960,7 @@ function RunModal({ workflowName, onClose }) {
       display:'flex', alignItems:'center', justifyContent:'center',
     }}>
       <div style={{
-        background:'#161b22', border:'1px solid #30363d', borderRadius:10,
+        background:'var(--surface)', border:'1px solid #30363d', borderRadius:10,
         padding:24, width:460, display:'flex', flexDirection:'column', gap:16,
         boxShadow:'0 20px 60px rgba(0,0,0,.6)',
       }}>
@@ -2969,10 +2969,10 @@ function RunModal({ workflowName, onClose }) {
           <div>
             <div style={{ fontSize:11, color:'#58a6ff', fontWeight:700,
               letterSpacing:'.06em', textTransform:'uppercase', marginBottom:2 }}>▶ Launch Run</div>
-            <div style={{ fontSize:13, color:'#e6edf3', fontFamily:'monospace' }}>{workflowName}</div>
+            <div style={{ fontSize:13, color:'var(--text)', fontFamily:'monospace' }}>{workflowName}</div>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none',
-            color:'#8b949e', cursor:'pointer', fontSize:18 }}>×</button>
+            color:'var(--text-2)', cursor:'pointer', fontSize:18 }}>×</button>
         </div>
 
         {/* Target input */}
@@ -3007,7 +3007,7 @@ function RunModal({ workflowName, onClose }) {
                 }}>{t}</span>
               ))}
               {targets.length > 8 && (
-                <span style={{ fontSize:9, color:'#484f58' }}>+{targets.length - 8} more</span>
+                <span style={{ fontSize:9, color:'var(--text-3)' }}>+{targets.length - 8} more</span>
               )}
             </div>
           )}
@@ -3020,7 +3020,7 @@ function RunModal({ workflowName, onClose }) {
 
         {/* Override vars */}
         <div>
-          <label className="label">Override vars <span style={{ fontWeight:400, color:'#484f58' }}>key=value …</span></label>
+          <label className="label">Override vars <span style={{ fontWeight:400, color:'var(--text-3)' }}>key=value …</span></label>
           <input className="input" placeholder="run_afrog=true naabu_top_ports=full"
             value={extraVars} onChange={e => setExtraVars(e.target.value)} />
         </div>
@@ -3029,7 +3029,7 @@ function RunModal({ workflowName, onClose }) {
         {progress && (
           <div>
             <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-              <span style={{ fontSize:9, color:'#8b949e', fontFamily:'monospace' }}>
+              <span style={{ fontSize:9, color:'var(--text-2)', fontFamily:'monospace' }}>
                 Creating runs… {progress.done}/{progress.total}
               </span>
               {progress.errors > 0 && (
@@ -3038,7 +3038,7 @@ function RunModal({ workflowName, onClose }) {
                 </span>
               )}
             </div>
-            <div style={{ background:'#21262d', borderRadius:4, height:5, overflow:'hidden' }}>
+            <div style={{ background:'var(--surface-2)', borderRadius:4, height:5, overflow:'hidden' }}>
               <div style={{
                 height:'100%', borderRadius:4,
                 background: progress.errors > 0 ? '#f85149' : '#3fb950',
@@ -3103,7 +3103,7 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
     return text.split('\n').map((line, i) => {
       // Comment
       if (line.trim().startsWith('#')) {
-        return <div key={i} style={{ color: '#484f58' }}>{line}</div>
+        return <div key={i} style={{ color: 'var(--text-3)' }}>{line}</div>
       }
       // Key: value line
       const keyMatch = line.match(/^(\s*)([\w_-]+)(:)(.*)$/)
@@ -3111,9 +3111,9 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
         const [, indent, key, colon, rest] = keyMatch
         return (
           <div key={i}>
-            <span style={{ color: '#8b949e' }}>{indent}</span>
+            <span style={{ color: 'var(--text-2)' }}>{indent}</span>
             <span style={{ color: '#79c0ff' }}>{key}</span>
-            <span style={{ color: '#30363d' }}>{colon}</span>
+            <span style={{ color: 'var(--border)' }}>{colon}</span>
             <span>{colorValue(rest)}</span>
           </div>
         )
@@ -3124,12 +3124,12 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
         const [, indent, dash, sp, rest] = listMatch
         return (
           <div key={i}>
-            <span style={{ color: '#484f58' }}>{indent}{dash}{sp}</span>
+            <span style={{ color: 'var(--text-3)' }}>{indent}{dash}{sp}</span>
             <span>{colorValue(rest)}</span>
           </div>
         )
       }
-      return <div key={i} style={{ color: '#e6edf3' }}>{line || ' '}</div>
+      return <div key={i} style={{ color: 'var(--text)' }}>{line || ' '}</div>
     })
   }
 
@@ -3147,7 +3147,7 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
           : <span key={i} style={{ color: '#3fb950' }}>{p}</span>
       )
     }
-    return <span style={{ color: s ? '#3fb950' : '#e6edf3' }}>{v}</span>
+    return <span style={{ color: s ? '#3fb950' : 'var(--text)' }}>{v}</span>
   }
 
   return (
@@ -3158,7 +3158,7 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
     }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: '#0d1117', border: '1px solid #30363d', borderRadius: 10,
+        background: 'var(--bg-soft)', border: '1px solid #30363d', borderRadius: 10,
         width: '72vw', maxWidth: 900, height: '82vh',
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 24px 80px rgba(0,0,0,.7)',
@@ -3170,20 +3170,20 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
         }}>
           <span style={{ fontSize: 14, color: '#a371f7', fontWeight: 700 }}>{ }</span>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#e6edf3', letterSpacing: '.04em' }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text)', letterSpacing: '.04em' }}>
               Workflow YAML
             </div>
-            <div style={{ fontSize: 9.5, color: '#8b949e' }}>
+            <div style={{ fontSize: 9.5, color: 'var(--text-2)' }}>
               {tab === 'live' ? 'State hiện tại trên canvas (có thể chưa lưu)' : `File trên disk: ${wfName}`}
             </div>
           </div>
           {/* Tab switcher */}
-          <div style={{ display: 'flex', gap: 0, marginLeft: 14, background: '#161b22', border: '1px solid #30363d', borderRadius: 6, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', gap: 0, marginLeft: 14, background: 'var(--surface)', border: '1px solid #30363d', borderRadius: 6, overflow: 'hidden' }}>
             {[['live', '⬡ Live'], ['file', '◈ File']].map(([t, label]) => (
               <button key={t} onClick={() => setTab(t)} style={{
-                background: tab === t ? '#21262d' : 'none',
+                background: tab === t ? 'var(--surface-2)' : 'none',
                 border: 'none', borderRight: t === 'live' ? '1px solid #30363d' : 'none',
-                color: tab === t ? '#e6edf3' : '#8b949e',
+                color: tab === t ? 'var(--text)' : 'var(--text-2)',
                 fontSize: 10, fontWeight: tab === t ? 700 : 400,
                 padding: '4px 12px', cursor: 'pointer',
               }}>{label}</button>
@@ -3191,7 +3191,7 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
           </div>
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{ fontSize: 9.5, color: '#484f58' }}>
+            <span style={{ fontSize: 9.5, color: 'var(--text-3)' }}>
               {tab === 'live' ? `${updatedSteps.length} steps · ` : ''}{yamlText.split('\n').length} lines
             </span>
             <button className="btn" style={{ fontSize: 11 }} onClick={handleCopy}>
@@ -3202,7 +3202,7 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
               {saving ? '⌛ Saving…' : '💾 Save'}
             </button>
             <button onClick={onClose} style={{
-              background: 'none', border: 'none', color: '#8b949e',
+              background: 'none', border: 'none', color: 'var(--text-2)',
               cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px',
             }}>×</button>
           </div>
@@ -3212,10 +3212,10 @@ function YamlModal({ wf, wfName, nodes, edges, onClose, onSave, saving }) {
         <div style={{
           flex: 1, overflowY: 'auto', padding: '16px 20px',
           fontFamily: 'monospace', fontSize: 11.5, lineHeight: 1.7,
-          color: '#e6edf3', letterSpacing: '.01em',
+          color: 'var(--text)', letterSpacing: '.01em',
         }}>
           {tab === 'file' && fileLoading && (
-            <div style={{ color: '#8b949e', textAlign: 'center', paddingTop: 40 }}>
+            <div style={{ color: 'var(--text-2)', textAlign: 'center', paddingTop: 40 }}>
               Loading file from disk…
             </div>
           )}
@@ -3271,7 +3271,7 @@ function HelpModal({ onClose }) {
     }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: '#0d1117', border: '1px solid #30363d', borderRadius: 10,
+        background: 'var(--bg-soft)', border: '1px solid #30363d', borderRadius: 10,
         width: '68vw', maxWidth: 820, maxHeight: '85vh',
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 24px 80px rgba(0,0,0,.7)',
@@ -3283,16 +3283,16 @@ function HelpModal({ onClose }) {
         }}>
           <span style={{ fontSize: 16 }}>◈</span>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#e6edf3' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
               Hướng dẫn sử dụng — Workflow Editor
             </div>
-            <div style={{ fontSize: 9.5, color: '#8b949e' }}>
+            <div style={{ fontSize: 9.5, color: 'var(--text-2)' }}>
               k1nzr3c0n · Visual Security Workflow Builder
             </div>
           </div>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', color: '#8b949e',
+            background: 'none', border: 'none', color: 'var(--text-2)',
             cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px',
           }}>×</button>
         </div>
@@ -3306,7 +3306,7 @@ function HelpModal({ onClose }) {
                 letterSpacing: '.04em', textTransform: 'uppercase',
                 background: 'none', border: 'none',
                 borderBottom: `2px solid ${tab === t ? '#58a6ff' : 'transparent'}`,
-                color: tab === t ? '#58a6ff' : '#8b949e', cursor: 'pointer',
+                color: tab === t ? '#58a6ff' : 'var(--text-2)', cursor: 'pointer',
               }}>
               {label}
             </button>
@@ -3353,7 +3353,7 @@ function HelpModal({ onClose }) {
                     <div key={rule} style={{ display: 'flex', gap: 12, fontSize: 10.5 }}>
                       <span style={{ color: '#58a6ff', fontFamily: 'monospace',
                         minWidth: 160, flexShrink: 0 }}>{rule}</span>
-                      <span style={{ color: '#8b949e' }}>{desc}</span>
+                      <span style={{ color: 'var(--text-2)' }}>{desc}</span>
                     </div>
                   ))}
                 </div>
@@ -3364,23 +3364,23 @@ function HelpModal({ onClose }) {
           {/* ── Shortcuts ── */}
           {tab === 'shortcuts' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ fontSize: 10, color: '#484f58', marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 10 }}>
                 Keyboard shortcuts trong Workflow Editor:
               </div>
               {SHORTCUTS.map(({ key, desc }) => (
                 <div key={key} style={{
                   display: 'flex', alignItems: 'center', gap: 16,
-                  padding: '9px 14px', background: '#161b22',
+                  padding: '9px 14px', background: 'var(--surface)',
                   border: '1px solid #21262d', borderRadius: 6,
                 }}>
                   <kbd style={{
-                    background: '#0d1117', border: '1px solid #30363d',
+                    background: 'var(--bg-soft)', border: '1px solid #30363d',
                     borderRadius: 5, padding: '3px 9px', fontSize: 10.5,
                     fontFamily: 'monospace', color: '#58a6ff',
                     whiteSpace: 'nowrap', flexShrink: 0,
                     boxShadow: '0 2px 0 #21262d',
                   }}>{key}</kbd>
-                  <span style={{ fontSize: 11, color: '#8b949e' }}>{desc}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-2)' }}>{desc}</span>
                 </div>
               ))}
             </div>
@@ -3389,14 +3389,14 @@ function HelpModal({ onClose }) {
           {/* ── Template Vars ── */}
           {tab === 'vars' && (
             <div>
-              <div style={{ fontSize: 10, color: '#484f58', marginBottom: 14 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 14 }}>
                 Sử dụng các placeholder này trong trường "Run command" của mỗi step:
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {VARS.map(({ v, desc }) => (
                   <div key={v} style={{
                     display: 'flex', gap: 14, padding: '10px 14px',
-                    background: '#161b22', border: '1px solid #21262d', borderRadius: 6,
+                    background: 'var(--surface)', border: '1px solid #21262d', borderRadius: 6,
                   }}>
                     <code style={{
                       color: '#f0b429', fontFamily: 'monospace', fontSize: 11,
@@ -3404,7 +3404,7 @@ function HelpModal({ onClose }) {
                       borderRadius: 4, padding: '2px 7px',
                       whiteSpace: 'nowrap', flexShrink: 0, alignSelf: 'flex-start',
                     }}>{v}</code>
-                    <span style={{ fontSize: 11, color: '#8b949e', lineHeight: 1.5 }}>{desc}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-2)', lineHeight: 1.5 }}>{desc}</span>
                   </div>
                 ))}
               </div>
@@ -3417,13 +3417,13 @@ function HelpModal({ onClose }) {
                   letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                   Ví dụ Run command
                 </div>
-                <pre style={{ margin: 0, fontSize: 10.5, color: '#8b949e',
+                <pre style={{ margin: 0, fontSize: 10.5, color: 'var(--text-2)',
                   fontFamily: 'monospace', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
 {`subfinder -d {target} \\
   -all -silent \\
   -o {workspace}/subdomains.txt 2>/dev/null; true`}
                 </pre>
-                <div style={{ marginTop: 8, fontSize: 9.5, color: '#484f58' }}>
+                <div style={{ marginTop: 8, fontSize: 9.5, color: 'var(--text-3)' }}>
                   Luôn thêm <code style={{ color: '#a371f7' }}>; true</code> ở cuối để tool không làm fail bước khi không tìm thấy kết quả.
                 </div>
               </div>
@@ -3436,15 +3436,15 @@ function HelpModal({ onClose }) {
               {TIPS.map(({ icon, title, body }) => (
                 <div key={title} style={{
                   display: 'flex', gap: 14, padding: '12px 14px',
-                  background: '#161b22', border: '1px solid #21262d', borderRadius: 7,
+                  background: 'var(--surface)', border: '1px solid #21262d', borderRadius: 7,
                 }}>
                   <span style={{ fontSize: 16, color: '#58a6ff', flexShrink: 0,
                     marginTop: 1, width: 20, textAlign: 'center' }}>{icon}</span>
                   <div>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: '#e6edf3', marginBottom: 4 }}>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
                       {title}
                     </div>
-                    <div style={{ fontSize: 10.5, color: '#8b949e', lineHeight: 1.6 }}>{body}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-2)', lineHeight: 1.6 }}>{body}</div>
                   </div>
                 </div>
               ))}
@@ -3466,10 +3466,10 @@ function Step({ n, title, desc }) {
         fontSize: 11, fontWeight: 700, color: '#58a6ff',
       }}>{n}</div>
       <div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#e6edf3', marginBottom: 4 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
           {title}
         </div>
-        <div style={{ fontSize: 10.5, color: '#8b949e', lineHeight: 1.6 }}>{desc}</div>
+        <div style={{ fontSize: 10.5, color: 'var(--text-2)', lineHeight: 1.6 }}>{desc}</div>
       </div>
     </div>
   )
@@ -3573,8 +3573,8 @@ export default function WorkflowEditor() {
   const onConnect = useCallback((params) => {
     setEdges(eds => addEdge({
       ...params, type: 'smoothstep',
-      style: { stroke: '#30363d', strokeWidth: 1.5 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#30363d', width: 10, height: 10 },
+      style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--border)', width: 10, height: 10 },
     }, eds))
     setWf(prev => {
       if (!prev?.steps) return prev
@@ -3690,7 +3690,7 @@ export default function WorkflowEditor() {
   if (!wf) {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
-        height:'100%', color:'#8b949e', fontSize:13 }}>
+        height:'100%', color:'var(--text-2)', fontSize:13 }}>
         Loading workflow…
       </div>
     )
@@ -3700,24 +3700,24 @@ export default function WorkflowEditor() {
   const disabledCount = nodes.length - enabledCount
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'#0d1117' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:'var(--bg-soft)' }}>
       {/* ── Toolbar ── */}
       <div style={{
         display:'flex', alignItems:'center', gap:10,
         padding:'8px 16px', borderBottom:'1px solid #30363d',
-        background:'#0d1117', flexShrink:0,
+        background:'var(--bg-soft)', flexShrink:0,
       }}>
-        <Link to="/workflows" style={{ color:'#8b949e', fontSize:11,
+        <Link to="/workflows" style={{ color:'var(--text-2)', fontSize:11,
           textDecoration:'none', display:'flex', alignItems:'center', gap:4 }}>
           ◈ Workflows
         </Link>
-        <span style={{ color:'#30363d' }}>/</span>
-        <span style={{ fontSize:12, fontWeight:700, color:'#e6edf3', fontFamily:'monospace' }}>
+        <span style={{ color:'var(--border)' }}>/</span>
+        <span style={{ fontSize:12, fontWeight:700, color:'var(--text)', fontFamily:'monospace' }}>
           {name}
         </span>
-        <span style={{ fontSize:10, color:'#8b949e', marginLeft:4 }}>
+        <span style={{ fontSize:10, color:'var(--text-2)', marginLeft:4 }}>
           {nodes.length} steps · <span style={{ color:'#3fb950' }}>{enabledCount} active</span>
-          {disabledCount > 0 && <span style={{ color:'#484f58' }}> · {disabledCount} disabled</span>}
+          {disabledCount > 0 && <span style={{ color:'var(--text-3)' }}> · {disabledCount} disabled</span>}
         </span>
 
         <div style={{ flex:1 }} />
@@ -3742,7 +3742,7 @@ export default function WorkflowEditor() {
           onClick={() => setShowHelp(true)}>
           ? Help
         </button>
-        <button className="btn" style={{ fontSize:11, color: saved ? '#3fb950' : '#e6edf3',
+        <button className="btn" style={{ fontSize:11, color: saved ? '#3fb950' : 'var(--text)',
           borderColor: saved ? '#3fb95066' : 'transparent' }}
           onClick={handleSave} disabled={saving}>
           {saving ? '⌛ Saving…' : saved ? '✓ Saved' : '💾 Save  Ctrl+S'}
@@ -3759,7 +3759,7 @@ export default function WorkflowEditor() {
         {/* ── Left Panel ── */}
         <div style={{
           width: leftW, flexShrink:0, borderRight:'1px solid #30363d',
-          display:'flex', flexDirection:'column', background:'#0d1117',
+          display:'flex', flexDirection:'column', background:'var(--bg-soft)',
           position:'relative',
         }}>
           {/* resize handle */}
@@ -3790,7 +3790,7 @@ export default function WorkflowEditor() {
                   flex:1, padding:'7px 2px', fontSize:9, fontWeight:700,
                   letterSpacing:'.03em', textTransform:'uppercase',
                   background:'none', border:'none', borderBottom:`2px solid ${leftTab===tab ? '#58a6ff' : 'transparent'}`,
-                  color: leftTab===tab ? '#58a6ff' : '#8b949e', cursor:'pointer',
+                  color: leftTab===tab ? '#58a6ff' : 'var(--text-2)', cursor:'pointer',
                   transition:'color .15s',
                 }}>
                 {label}
@@ -3803,7 +3803,7 @@ export default function WorkflowEditor() {
             {/* ── Library tab ── */}
             {leftTab === 'library' && (
               <div style={{ padding: '10px 8px' }}>
-                <p style={{ fontSize: 9.5, color: '#484f58', lineHeight: 1.5,
+                <p style={{ fontSize: 9.5, color: 'var(--text-3)', lineHeight: 1.5,
                   marginBottom: 10, padding: '0 4px' }}>
                   Drag any tool onto the canvas to add a step.
                   Select a node to connect handles.
@@ -3830,7 +3830,7 @@ export default function WorkflowEditor() {
                           }}
                           style={{
                             padding: '6px 10px', marginBottom: 3,
-                            background: '#161b22', border: `1px solid #21262d`,
+                            background: 'var(--surface)', border: `1px solid #21262d`,
                             borderRadius: 6, cursor: 'grab', userSelect: 'none',
                             transition: 'border-color .15s, background .15s',
                           }}
@@ -3839,14 +3839,14 @@ export default function WorkflowEditor() {
                             e.currentTarget.style.background = ph.bg
                           }}
                           onMouseLeave={e => {
-                            e.currentTarget.style.borderColor = '#21262d'
-                            e.currentTarget.style.background = '#161b22'
+                            e.currentTarget.style.borderColor = 'var(--surface-2)'
+                            e.currentTarget.style.background = 'var(--surface)'
                           }}>
                           <div style={{ fontSize: 10.5, fontWeight: 700,
-                            color: '#e6edf3', fontFamily: 'monospace', marginBottom: 2 }}>
+                            color: 'var(--text)', fontFamily: 'monospace', marginBottom: 2 }}>
                             {tool.name}
                           </div>
-                          <div style={{ fontSize: 9, color: '#8b949e', lineHeight: 1.3 }}>
+                          <div style={{ fontSize: 9, color: 'var(--text-2)', lineHeight: 1.3 }}>
                             {tool.desc}
                           </div>
                         </div>
@@ -3860,30 +3860,30 @@ export default function WorkflowEditor() {
             {/* ── Presets tab ── */}
             {leftTab === 'templates' && (
               <div style={{ padding: 12, display:'flex', flexDirection:'column', gap: 8 }}>
-                <p style={{ fontSize:10, color:'#484f58', marginBottom:4, lineHeight:1.5 }}>
+                <p style={{ fontSize:10, color:'var(--text-3)', marginBottom:4, lineHeight:1.5 }}>
                   Apply a preset to quickly configure which phases run.
                 </p>
                 {Object.entries(TEMPLATES).map(([tplName, tpl]) => (
                   <button key={tplName} onClick={() => applyTemplate(tpl.vars)}
                     style={{
-                      background:'#161b22', border:'1px solid #30363d', borderRadius:7,
+                      background:'var(--surface)', border:'1px solid #30363d', borderRadius:7,
                       padding:'10px 12px', textAlign:'left', cursor:'pointer',
                       transition:'border-color .15s, background .15s',
                     }}
                     onMouseEnter={e => e.currentTarget.style.borderColor = '#58a6ff66'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = '#30363d'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
                   >
-                    <div style={{ fontSize:12, fontWeight:700, color:'#e6edf3', marginBottom:3 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:'var(--text)', marginBottom:3 }}>
                       {tpl.icon} {tplName}
                     </div>
-                    <div style={{ fontSize:10, color:'#8b949e', lineHeight:1.4 }}>{tpl.desc}</div>
+                    <div style={{ fontSize:10, color:'var(--text-2)', lineHeight:1.4 }}>{tpl.desc}</div>
                   </button>
                 ))}
 
                 {/* Phase quick-toggles */}
-                <div style={{ marginTop:8, padding:'10px 12px', background:'#161b22',
+                <div style={{ marginTop:8, padding:'10px 12px', background:'var(--surface)',
                   border:'1px solid #30363d', borderRadius:7 }}>
-                  <div style={{ fontSize:9, color:'#484f58', fontWeight:700,
+                  <div style={{ fontSize:9, color:'var(--text-3)', fontWeight:700,
                     letterSpacing:'.07em', textTransform:'uppercase', marginBottom:8 }}>
                     Quick toggles
                   </div>
@@ -3896,7 +3896,7 @@ export default function WorkflowEditor() {
                         display:'flex', alignItems:'center', justifyContent:'space-between',
                         cursor:'pointer', userSelect:'none', padding:'3px 0',
                       }}>
-                        <span style={{ fontSize:10, color:'#8b949e', fontFamily:'monospace' }}>
+                        <span style={{ fontSize:10, color:'var(--text-2)', fontFamily:'monospace' }}>
                           {key.replace('run_','')}
                         </span>
                         <input type="checkbox" checked={wf.vars?.[key] === 'true'}
@@ -3919,7 +3919,7 @@ export default function WorkflowEditor() {
               <div style={{ padding:8 }}>
                 {nodes.length === 0 && (
                   <div style={{ padding: '20px 8px', textAlign: 'center' }}>
-                    <p style={{ fontSize: 10, color: '#484f58', lineHeight: 1.6 }}>
+                    <p style={{ fontSize: 10, color: 'var(--text-3)', lineHeight: 1.6 }}>
                       No steps yet. Drag tools from the Library tab onto the canvas.
                     </p>
                   </div>
@@ -3931,18 +3931,18 @@ export default function WorkflowEditor() {
                       onClick={() => setSelectedStep(n.data.step)}
                       style={{
                         display:'flex', alignItems:'center', gap:7,
-                        width:'100%', background: selectedStep?.id === n.id ? '#1c2128' : 'none',
+                        width:'100%', background: selectedStep?.id === n.id ? 'var(--surface-2)' : 'none',
                         border:'none', borderRadius:5, padding:'5px 8px',
                         cursor:'pointer', textAlign:'left', marginBottom:2,
                         transition:'background .1s',
                       }}
-                      onMouseEnter={e => { if(selectedStep?.id !== n.id) e.currentTarget.style.background='#161b22' }}
+                      onMouseEnter={e => { if(selectedStep?.id !== n.id) e.currentTarget.style.background='var(--surface)' }}
                       onMouseLeave={e => { if(selectedStep?.id !== n.id) e.currentTarget.style.background='none' }}
                     >
                       <span style={{ width:6, height:6, borderRadius:'50%',
-                        background: n.data.isOn === false ? '#484f58' : ph.color,
+                        background: n.data.isOn === false ? 'var(--text-3)' : ph.color,
                         flexShrink:0 }} />
-                      <span style={{ fontSize:10, color: n.data.isOn === false ? '#484f58' : '#e6edf3',
+                      <span style={{ fontSize:10, color: n.data.isOn === false ? 'var(--text-3)' : 'var(--text)',
                         fontFamily:'monospace', flex:1, overflow:'hidden',
                         textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {n.id}
@@ -3988,22 +3988,22 @@ export default function WorkflowEditor() {
             minZoom={0.15}
             maxZoom={2}
             deleteKeyCode={['Delete', 'Backspace']}
-            style={{ background: '#0d1117' }}
+            style={{ background: 'var(--bg-soft)' }}
             defaultEdgeOptions={{
               type: 'smoothstep',
-              style: { stroke: '#30363d', strokeWidth: 1.5 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: '#30363d', width:10, height:10 },
+              style: { stroke: 'var(--border)', strokeWidth: 1.5 },
+              markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--border)', width:10, height:10 },
             }}
           >
             <Background
               variant={BackgroundVariant.Dots}
-              gap={24} size={1} color="#21262d" />
+              gap={24} size={1} color="var(--border)" />
             <Controls position="bottom-right" />
             <MiniMap
               position="bottom-left"
               nodeColor={(n) => {
                 const ph = PH[n.data?.phase] || PH.scan
-                return n.data?.isOn === false ? '#21262d' : ph.color + '88'
+                return n.data?.isOn === false ? 'var(--surface-2)' : ph.color + '88'
               }}
               maskColor="#0d111788"
               style={{ width: 160, height: 100 }}
@@ -4011,14 +4011,14 @@ export default function WorkflowEditor() {
             {/* Legend + hint */}
             <Panel position="top-right">
               <div style={{
-                background:'#161b22', border:'1px solid #30363d', borderRadius:7,
+                background:'var(--surface)', border:'1px solid #30363d', borderRadius:7,
                 padding:'8px 12px', display:'flex', flexDirection:'column', gap:4,
               }}>
                 {Object.entries(PH).map(([k, ph]) => (
                   <div key={k} style={{ display:'flex', alignItems:'center', gap:6, fontSize:9.5 }}>
                     <span style={{ width:8, height:8, borderRadius:'50%',
                       background:ph.color, flexShrink:0 }} />
-                    <span style={{ color:'#8b949e' }}>{ph.label}</span>
+                    <span style={{ color:'var(--text-2)' }}>{ph.label}</span>
                   </div>
                 ))}
                 <div style={{ borderTop:'1px solid #21262d', marginTop:4, paddingTop:4,
@@ -4026,7 +4026,7 @@ export default function WorkflowEditor() {
                   {Object.entries(SC).map(([s, sc]) => (
                     <div key={s} style={{ display:'flex', alignItems:'center', gap:5, fontSize:9 }}>
                       <span style={{ color:sc.color }}>{sc.icon}</span>
-                      <span style={{ color:'#484f58' }}>{s}</span>
+                      <span style={{ color:'var(--text-3)' }}>{s}</span>
                     </div>
                   ))}
                 </div>
@@ -4036,12 +4036,12 @@ export default function WorkflowEditor() {
             {nodes.length === 0 && (
               <Panel position="top-center">
                 <div style={{
-                  background:'#161b22', border:'1px dashed #30363d', borderRadius:8,
+                  background:'var(--surface)', border:'1px dashed #30363d', borderRadius:8,
                   padding:'16px 24px', textAlign:'center', marginTop:60,
                 }}>
                   <div style={{ fontSize:24, marginBottom:8 }}>◈</div>
-                  <div style={{ fontSize:12, color:'#8b949e', marginBottom:4 }}>Empty workflow</div>
-                  <div style={{ fontSize:10, color:'#484f58' }}>
+                  <div style={{ fontSize:12, color:'var(--text-2)', marginBottom:4 }}>Empty workflow</div>
+                  <div style={{ fontSize:10, color:'var(--text-3)' }}>
                     Drag tools from the Library panel on the left<br/>onto this canvas to build your workflow.
                   </div>
                 </div>

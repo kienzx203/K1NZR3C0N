@@ -138,7 +138,7 @@ export default function Runs() {
                   checked={allChecked}
                   ref={el => { if (el) el.indeterminate = someChecked }}
                   onChange={toggleAll}
-                  className="accent-[#58a6ff] cursor-pointer align-middle"
+                  className="accent-[var(--accent)] cursor-pointer align-middle"
                 />
               </th>
               {['Target', 'Workflow', 'Status', 'Started', 'Duration', ''].map((h, i) => (
@@ -159,7 +159,7 @@ export default function Runs() {
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => toggleOne(r.id)}
-                      className="accent-[#58a6ff] cursor-pointer"
+                      className="accent-[var(--accent)] cursor-pointer"
                     />
                   </td>
                   <td className="px-4 py-2.5 max-w-[220px] truncate">

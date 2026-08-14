@@ -106,6 +106,8 @@ class Finding(Base):
     kind = Column(String(20), nullable=False, index=True)   # vuln | port | http | subdomain
     severity = Column(String(20), index=True)               # critical | high | medium | low | info
     host = Column(String(512), nullable=False, index=True)
+    notes = Column(Text)                                    # analyst notes (lifecycle tracking)
+    tags = Column(Text, default="[]")                       # JSON array of free-form tags
     ip = Column(String(64))
     port = Column(Integer)
     status_code = Column(Integer)                           # HTTP status code, for kind="http" rows
@@ -120,6 +122,60 @@ class Finding(Base):
     status = Column(String(20), default="open", index=True) # open | fp | resolved
     screenshot = Column(String(1024))                       # path relative to the run's workspace, e.g. "screenshots/x.png"
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Schedule(Base):
+    """Recurring recon — cron-driven workflow runs (continuous recon)."""
+    __tablename__ = "schedules"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    workflow = Column(String(255), nullable=False)
+    target = Column(String(512), nullable=False, index=True)
+    cron_expr = Column(String(64), nullable=False)          # 5-field cron, local time
+    vars_json = Column(Text, default="{}")                  # optional var overrides
+    enabled = Column(Boolean, default=True)
+    alert_new_assets = Column(Boolean, default=True)        # webhook on new subdomains/hosts
+    last_run_id = Column(String(16))
+    last_run_at = Column(DateTime)
+    next_run_at = Column(DateTime, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Target(Base):
+    """Target registry — scope definitions + engagement mode (deny-wins scope check)."""
+    __tablename__ = "targets"
+
+    name = Column(String(512), primary_key=True)            # primary domain, e.g. example.com
+    scope_json = Column(Text, default="[]")                 # JSON list of in-scope patterns
+    mode = Column(String(20), default="bounty")             # bounty | vdp | oos
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class NewAsset(Base):
+    """Assets first seen in a run (diff vs previous runs of the same target)."""
+    __tablename__ = "new_assets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(16), nullable=False, index=True)
+    target = Column(String(512), nullable=False, index=True)
+    host = Column(String(512), nullable=False)
+    kind = Column(String(20))                               # subdomain | http | port
+    first_seen = Column(DateTime, default=datetime.utcnow)
+
+
+class ScopeAudit(Base):
+    """Audit trail for scope decisions (deny-wins enforcement)."""
+    __tablename__ = "scope_audit"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    target = Column(String(512), nullable=False, index=True)
+    action = Column(String(64), nullable=False)             # run_start | scope_check | blocked
+    result = Column(String(20), nullable=False)             # allowed | denied
+    detail = Column(Text)
+    ts = Column(DateTime, default=datetime.utcnow)
 
 
 def tool_version_to_dict(t: "ToolVersion") -> dict[str, Any]:
@@ -149,6 +205,8 @@ def init_db() -> None:
             "ALTER TABLE tool_versions ADD COLUMN latest_url TEXT",
             "ALTER TABLE findings ADD COLUMN status_code INTEGER",
             "ALTER TABLE findings ADD COLUMN screenshot TEXT",
+            "ALTER TABLE findings ADD COLUMN notes TEXT",
+            "ALTER TABLE findings ADD COLUMN tags TEXT DEFAULT '[]'",
         ]:
             try:
                 cur.execute(stmt)
@@ -236,5 +294,46 @@ def finding_to_dict(f: Finding) -> dict[str, Any]:
         "evidence": f.evidence,
         "description": f.description,
         "status": f.status,
+        "notes": f.notes,
+        "tags": json.loads(f.tags or "[]"),
         "created_at": f.created_at.isoformat() if f.created_at else None,
+    }
+
+
+def schedule_to_dict(s: "Schedule") -> dict[str, Any]:
+    return {
+        "id": s.id,
+        "name": s.name,
+        "workflow": s.workflow,
+        "target": s.target,
+        "cron_expr": s.cron_expr,
+        "vars": json.loads(s.vars_json or "{}"),
+        "enabled": bool(s.enabled),
+        "alert_new_assets": bool(s.alert_new_assets),
+        "last_run_id": s.last_run_id,
+        "last_run_at": s.last_run_at.isoformat() if s.last_run_at else None,
+        "next_run_at": s.next_run_at.isoformat() if s.next_run_at else None,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+    }
+
+
+def target_to_dict(t: "Target") -> dict[str, Any]:
+    return {
+        "name": t.name,
+        "scope": json.loads(t.scope_json or "[]"),
+        "mode": t.mode or "bounty",
+        "notes": t.notes,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+    }
+
+
+def new_asset_to_dict(a: "NewAsset") -> dict[str, Any]:
+    return {
+        "id": a.id,
+        "run_id": a.run_id,
+        "target": a.target,
+        "host": a.host,
+        "kind": a.kind,
+        "first_seen": a.first_seen.isoformat() if a.first_seen else None,
     }

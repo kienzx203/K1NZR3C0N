@@ -62,19 +62,19 @@ export default function AddFiltersMenu({ categories, applied, onApply }) {
     <div ref={rootRef} className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className={`btn flex items-center gap-2 ${appliedCount > 0 ? 'border-[#58a6ff66] text-[#58a6ff]' : 'btn-ghost'}`}
-        style={{ borderWidth: 1, borderStyle: 'solid', borderColor: appliedCount > 0 ? undefined : '#30363d' }}
+        className={`btn flex items-center gap-2 ${appliedCount > 0 ? 'border-[#58a6ff66] text-[var(--accent)]' : 'btn-ghost'}`}
+        style={{ borderWidth: 1, borderStyle: 'solid', borderColor: appliedCount > 0 ? undefined : 'var(--border)' }}
       >
         <span>☰</span> Add Filters
         {appliedCount > 0 && (
-          <span className="text-[11px] px-1.5 rounded-full bg-[#58a6ff22] text-[#58a6ff]">{appliedCount}</span>
+          <span className="text-[11px] px-1.5 rounded-full bg-[#58a6ff22] text-[var(--accent)]">{appliedCount}</span>
         )}
       </button>
 
       {open && (
         <div className="absolute z-30 mt-1 left-0 card overflow-hidden shadow-2xl flex" style={{ width: 480 }}>
           {/* Left: category list */}
-          <div className="w-44 flex-shrink-0 border-r border-[#30363d] py-1.5 max-h-96 overflow-y-auto">
+          <div className="w-44 flex-shrink-0 border-r border-[var(--border)] py-1.5 max-h-96 overflow-y-auto">
             {categories.map(c => {
               const n = (pending[c.key] || []).length
               return (
@@ -83,13 +83,13 @@ export default function AddFiltersMenu({ categories, applied, onApply }) {
                   onMouseEnter={() => setActiveKey(c.key)}
                   onClick={() => setActiveKey(c.key)}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition-colors
-                    ${activeKey === c.key ? 'bg-[#161b22] text-[#e6edf3]' : 'text-[#8b949e] hover:bg-[#161b22] hover:text-[#e6edf3]'}`}
+                    ${activeKey === c.key ? 'bg-[var(--surface)] text-[var(--text)]' : 'text-[var(--text-2)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`}
                 >
                   <span className="flex items-center gap-2 truncate">
                     <span className="opacity-70">{c.icon}</span> {c.label}
-                    {n > 0 && <span className="text-[11px] px-1.5 rounded-full bg-[#58a6ff22] text-[#58a6ff]">{n}</span>}
+                    {n > 0 && <span className="text-[11px] px-1.5 rounded-full bg-[#58a6ff22] text-[var(--accent)]">{n}</span>}
                   </span>
-                  <span className="text-[#484f58]">›</span>
+                  <span className="text-[var(--text-3)]">›</span>
                 </button>
               )
             })}
@@ -97,7 +97,7 @@ export default function AddFiltersMenu({ categories, applied, onApply }) {
 
           {/* Right: searchable checkbox list for the active category */}
           <div className="flex-1 flex flex-col min-w-0">
-            <div className="p-2 border-b border-[#30363d]">
+            <div className="p-2 border-b border-[var(--border)]">
               <div className="relative">
                 <input
                   value={query}
@@ -105,39 +105,39 @@ export default function AddFiltersMenu({ categories, applied, onApply }) {
                   placeholder={`Search ${active?.label.toLowerCase()}…`}
                   className="input py-1 pr-7"
                 />
-                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[#484f58]">⌕</span>
+                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-3)]">⌕</span>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto max-h-72 py-1">
               {filteredOptions.length === 0 && (
-                <div className="px-3 py-3 text-[12px] text-[#484f58]">No matches</div>
+                <div className="px-3 py-3 text-[12px] text-[var(--text-3)]">No matches</div>
               )}
               {filteredOptions.map(o => (
                 <label
                   key={o.value}
-                  className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-[#161b22] transition-colors"
+                  className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-[var(--surface-2)] transition-colors"
                 >
                   <span className="flex items-center gap-2 min-w-0">
                     <input
                       type="checkbox"
                       checked={activeSelected.has(o.value)}
                       onChange={() => toggle(o.value)}
-                      className="accent-[#58a6ff] flex-shrink-0"
+                      className="accent-[var(--accent)] flex-shrink-0"
                     />
-                    <span className="truncate text-[#e6edf3]">{o.label}</span>
+                    <span className="truncate text-[var(--text)]">{o.label}</span>
                   </span>
                   {o.count != null && (
-                    <span className="text-[11px] text-[#8b949e] border border-[#30363d] rounded px-1.5 flex-shrink-0">{o.count}</span>
+                    <span className="text-[11px] text-[var(--text-2)] border border-[var(--border)] rounded px-1.5 flex-shrink-0">{o.count}</span>
                   )}
                 </label>
               ))}
             </div>
             {/* Bottom bar */}
-            <div className="flex items-center gap-2 p-2 border-t border-[#30363d]">
+            <div className="flex items-center gap-2 p-2 border-t border-[var(--border)]">
               <button
                 onClick={clearAll}
                 title="Clear all pending selections"
-                className="w-7 h-7 flex items-center justify-center rounded border border-[#30363d] text-[#8b949e] hover:text-[#f85149] hover:border-[#f85149] transition-colors"
+                className="w-7 h-7 flex items-center justify-center rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--red)] hover:border-[var(--red)] transition-colors"
               >
                 ✕
               </button>

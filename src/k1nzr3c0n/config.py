@@ -20,5 +20,10 @@ CELERY_BACKEND = REDIS_URL
 # Auto-detects payload format from URL: discord.com → Discord embeds, else Slack-compatible.
 WEBHOOK_URL = os.environ.get("K1NZR3C0N_WEBHOOK_URL", "")
 
+# Optional API bearer token. When set, every /api/* request needs
+# `Authorization: Bearer <token>` and WebSockets need ?token=<token>.
+# Empty = auth disabled (backwards compatible, local-only deployments).
+API_TOKEN = os.environ.get("K1NZR3C0N_API_TOKEN", "")
+
 # Slack-style channel/username override (only used for Slack-compatible webhooks)
 WEBHOOK_USERNAME = os.environ.get("K1NZR3C0N_WEBHOOK_USERNAME", "k1nzr3c0n")

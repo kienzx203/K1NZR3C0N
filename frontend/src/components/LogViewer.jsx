@@ -96,31 +96,31 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-[#30363d] flex-shrink-0 flex-wrap">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--border)] flex-shrink-0 flex-wrap">
         <input
           className="input w-56 py-1"
           placeholder="Filter…"
           value={filter}
           onChange={e => setFilter(e.target.value)}
         />
-        <label className="flex items-center gap-1.5 text-xs text-[#8b949e] cursor-pointer select-none">
-          <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} className="accent-[#58a6ff]" />
+        <label className="flex items-center gap-1.5 text-xs text-[var(--text-2)] cursor-pointer select-none">
+          <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} className="accent-[var(--accent)]" />
           Auto-scroll
         </label>
-        <span className="text-xs text-[#8b949e] ml-auto">
+        <span className="text-xs text-[var(--text-2)] ml-auto">
           {visible.length.toLocaleString()} lines
           {serverTotal > visible.length && !filter && (
-            <span className="text-[#8b949e]"> / {serverTotal.toLocaleString()} total</span>
+            <span className="text-[var(--text-2)]"> / {serverTotal.toLocaleString()} total</span>
           )}
         </span>
-        {running && <span className="text-xs text-[#3fb950] animate-pulse font-mono">● live</span>}
+        {running && <span className="text-xs text-[var(--green)] animate-pulse font-mono">● live</span>}
       </div>
 
       {/* Log pane */}
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-3 bg-[#0d1117]"
+        className="flex-1 overflow-y-auto px-4 py-3 bg-[var(--bg-soft)]"
         style={{ fontSize: 11, lineHeight: `${ROW_H}px`, fontFamily: 'monospace' }}
       >
         {/* Load-older banner */}
@@ -129,7 +129,7 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
             <button
               onClick={loadOlder}
               disabled={loadingOlder}
-              className="text-xs text-[#8b949e] hover:text-[#e6edf3] border border-[#30363d] rounded px-3 py-1 transition-colors disabled:opacity-50"
+              className="text-xs text-[var(--text-2)] hover:text-[var(--text)] border border-[var(--border)] rounded px-3 py-1 transition-colors disabled:opacity-50"
             >
               {loadingOlder ? 'Loading…' : `↑ Load older lines (${(serverTotal - allLogs.length).toLocaleString()} not shown)`}
             </button>
@@ -143,7 +143,7 @@ export default function LogViewer({ logs, running, runId, totalLogs = 0 }) {
         )}
 
         {visible.length === 0 && (
-          <p className="text-[#8b949e]">{running ? 'Waiting for output…' : 'No logs.'}</p>
+          <p className="text-[var(--text-2)]">{running ? 'Waiting for output…' : 'No logs.'}</p>
         )}
 
         {/* Virtual scroll spacers + windowed rows */}

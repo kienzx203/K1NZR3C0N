@@ -1,5 +1,53 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { api } from '../api.js'
+import { api, getToken, setToken } from '../api.js'
+
+function ApiTokenCard() {
+  const [status, setStatus] = useState(null)
+  const [value, setValue] = useState(getToken())
+
+  useEffect(() => {
+    api.authStatus().then(setStatus).catch(() => setStatus({ auth_required: false }))
+  }, [])
+
+  if (!status) return null
+
+  return (
+    <div className="card p-4 mb-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="section-title">API Access Token</h3>
+          <p className="text-[11px] mt-1" style={{ color: 'var(--text-2)' }}>
+            {status.auth_required
+              ? 'Server auth is ON (K1NZR3C0N_API_TOKEN) — this browser must send the matching token.'
+              : 'Server auth is OFF — set K1NZR3C0N_API_TOKEN in /opt/k1nzr3c0n/.env to require a bearer token.'}
+          </p>
+        </div>
+        <div className="flex gap-2 items-center">
+          <input
+            className="input font-mono w-64"
+            type="password"
+            placeholder={status.auth_required ? 'Paste token…' : 'Not required'}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            disabled={!status.auth_required && !value}
+          />
+          <button
+            className="btn btn-accent"
+            onClick={() => { setToken(value.trim()); window.location.reload() }}
+            disabled={!status.auth_required && !value}
+          >
+            Save
+          </button>
+          {value && (
+            <button className="btn btn-ghost" onClick={() => { setValue(''); setToken(''); window.location.reload() }}>
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const CATEGORY_ORDER = [
   'Internet Scanner',
@@ -92,10 +140,10 @@ export default function Keys() {
       {/* Header */}
       <div className="mb-5 flex items-start justify-between">
         <div>
-          <h1 className="text-[#e6edf3] text-xl font-semibold">Intelligence API Keys</h1>
-          <p className="text-[#8b949e] text-sm mt-1">
-            Keys saved here are auto-injected as <strong className="text-[#e6edf3]">$ENV_VARs</strong> and into{' '}
-            <strong className="text-[#e6edf3]">subfinder</strong> on every workflow run — no manual copy-paste needed.
+          <h1 className="text-[var(--text)] text-xl font-semibold">Intelligence API Keys</h1>
+          <p className="text-[var(--text-2)] text-sm mt-1">
+            Keys saved here are auto-injected as <strong className="text-[var(--text)]">$ENV_VARs</strong> and into{' '}
+            <strong className="text-[var(--text)]">subfinder</strong> on every workflow run — no manual copy-paste needed.
           </p>
         </div>
         <div className="text-right flex-shrink-0 ml-4">
@@ -107,11 +155,14 @@ export default function Keys() {
         </div>
       </div>
 
+      {/* API access token (client side) */}
+      <ApiTokenCard />
+
       {/* Template Sync panel */}
       <div style={{ marginBottom: 20, borderRadius: 8, border: '1px solid #21262d', overflow: 'hidden' }}>
         <div style={{
-          padding: '7px 12px', background: '#0d1117',
-          fontSize: 10, fontWeight: 700, color: '#484f58',
+          padding: '7px 12px', background: 'var(--bg-soft)',
+          fontSize: 10, fontWeight: 700, color: 'var(--text-3)',
           textTransform: 'uppercase', letterSpacing: '0.08em',
           borderBottom: '1px solid #21262d',
         }}>
@@ -124,18 +175,18 @@ export default function Keys() {
           return (
             <div key={tmpl.name} style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              padding: '8px 12px', background: '#161b22',
+              padding: '8px 12px', background: 'var(--surface)',
               borderBottom: isLast ? 'none' : '1px solid #21262d',
             }}>
               {/* Status dot */}
               <span style={{
                 width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                background: active ? '#3fb950' : '#30363d',
+                background: active ? '#3fb950' : 'var(--border)',
               }} />
 
               {/* Template name */}
               <span style={{
-                fontFamily: 'monospace', fontSize: 10, color: '#e6edf3',
+                fontFamily: 'monospace', fontSize: 10, color: 'var(--text)',
                 flexShrink: 0, minWidth: 220,
               }}>
                 {tmpl.name}
@@ -148,24 +199,24 @@ export default function Keys() {
                     {/* Env vars badge */}
                     <span style={{
                       fontSize: 9, padding: '1px 7px', borderRadius: 3,
-                      background: configured > 0 ? '#0a1f0e' : '#0d1117',
-                      border: `1px solid ${configured > 0 ? '#3fb95044' : '#21262d'}`,
-                      color: configured > 0 ? '#3fb950' : '#484f58',
+                      background: configured > 0 ? '#0a1f0e' : 'var(--bg-soft)',
+                      border: `1px solid ${configured > 0 ? '#3fb95044' : 'var(--surface-2)'}`,
+                      color: configured > 0 ? '#3fb950' : 'var(--text-3)',
                     }}>
                       ⚡ {configured} $ENV_VAR{configured !== 1 ? 's' : ''} injected
                     </span>
                     {/* Subfinder badge */}
                     <span style={{
                       fontSize: 9, padding: '1px 7px', borderRadius: 3,
-                      background: subfinder_configured > 0 ? '#0a192966' : '#0d1117',
-                      border: `1px solid ${subfinder_configured > 0 ? '#58a6ff44' : '#21262d'}`,
-                      color: subfinder_configured > 0 ? '#58a6ff' : '#484f58',
+                      background: subfinder_configured > 0 ? '#0a192966' : 'var(--bg-soft)',
+                      border: `1px solid ${subfinder_configured > 0 ? '#58a6ff44' : 'var(--surface-2)'}`,
+                      color: subfinder_configured > 0 ? '#58a6ff' : 'var(--text-3)',
                     }}>
                       ⚙ subfinder {subfinder_configured}/{subfinder_total}
                     </span>
                   </>
                 ) : (
-                  <span style={{ fontSize: 9, color: '#484f58' }}>
+                  <span style={{ fontSize: 9, color: 'var(--text-3)' }}>
                     ○ {tmpl.note}
                   </span>
                 )}
@@ -176,7 +227,7 @@ export default function Keys() {
       </div>
 
       {error && (
-        <div className="mb-4 px-4 py-2 rounded bg-[#f851491a] border border-[#f85149] text-[#f85149] text-sm flex items-center gap-3">
+        <div className="mb-4 px-4 py-2 rounded bg-[#f851491a] border border-[var(--red)] text-[var(--red)] text-sm flex items-center gap-3">
           <span className="flex-1">{error}</span>
           <button className="underline text-xs opacity-75 hover:opacity-100" onClick={() => setError(null)}>dismiss</button>
         </div>
@@ -187,7 +238,7 @@ export default function Keys() {
         if (rows.length === 0) return null
         return (
           <section key={cat} className="mb-7">
-            <h2 className="text-[#8b949e] text-[10px] font-semibold uppercase tracking-widest mb-3 pb-2 border-b border-[#21262d]">
+            <h2 className="text-[var(--text-2)] text-[10px] font-semibold uppercase tracking-widest mb-3 pb-2 border-b border-[var(--surface-2)]">
               {cat}
             </h2>
             <div className="space-y-1.5">
@@ -223,25 +274,25 @@ function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave,
   return (
     <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
       isEditing
-        ? 'border-[#388bfd] bg-[#161b22]'
-        : 'border-[#21262d] bg-[#161b22] hover:border-[#30363d]'
+        ? 'border-[#388bfd] bg-[var(--surface)]'
+        : 'border-[var(--surface-2)] bg-[var(--surface)] hover:border-[var(--border)]'
     }`}>
       {/* Status dot */}
       <span className={`w-2 h-2 rounded-full flex-shrink-0 transition-colors ${
-        k.configured ? 'bg-[#3fb950]' : 'bg-[#30363d]'
+        k.configured ? 'bg-[var(--green)]' : 'bg-[var(--border)]'
       }`} />
 
       {/* Provider info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[#e6edf3] text-sm font-medium">{k.meta?.name || k.provider}</span>
-          <span className="text-[#484f58] text-xs">{k.meta?.url}</span>
+          <span className="text-[var(--text)] text-sm font-medium">{k.meta?.name || k.provider}</span>
+          <span className="text-[var(--text-3)] text-xs">{k.meta?.url}</span>
 
           {/* Subfinder badge */}
           {k.meta?.subfinder !== false && (
             <span style={{
               fontSize: 8, padding: '1px 5px', borderRadius: 3,
-              background: '#161b22', border: '1px solid #21262d', color: '#484f58',
+              background: 'var(--surface)', border: '1px solid #21262d', color: 'var(--text-3)',
             }}>subfinder</span>
           )}
 
@@ -249,9 +300,9 @@ function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave,
           {envVar && (
             <span style={{
               fontSize: 8, padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace',
-              background: k.configured ? '#0a1f0e22' : '#0d1117',
-              border: `1px solid ${k.configured ? '#3fb95044' : '#21262d'}`,
-              color: k.configured ? '#3fb950' : '#484f58',
+              background: k.configured ? '#0a1f0e22' : 'var(--bg-soft)',
+              border: `1px solid ${k.configured ? '#3fb95044' : 'var(--surface-2)'}`,
+              color: k.configured ? '#3fb950' : 'var(--text-3)',
             }}>
               ${envVar}
             </span>
@@ -269,16 +320,16 @@ function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave,
         </div>
 
         {!isEditing && k.configured && (
-          <div className="text-[#8b949e] text-xs font-mono mt-0.5 tracking-wider">{k.masked}</div>
+          <div className="text-[var(--text-2)] text-xs font-mono mt-0.5 tracking-wider">{k.masked}</div>
         )}
         {!isEditing && !k.configured && (
-          <div className="text-[#484f58] text-xs mt-0.5 truncate">{k.meta?.hint}</div>
+          <div className="text-[var(--text-3)] text-xs mt-0.5 truncate">{k.meta?.hint}</div>
         )}
 
         {isEditing && (
           <div className="flex items-center gap-2 mt-2">
             <input
-              className="flex-1 min-w-0 bg-[#0d1117] border border-[#30363d] rounded px-2.5 py-1.5 text-xs text-[#e6edf3] font-mono focus:outline-none focus:border-[#388bfd] placeholder-[#484f58]"
+              className="flex-1 min-w-0 bg-[var(--bg-soft)] border border-[var(--border)] rounded px-2.5 py-1.5 text-xs text-[var(--text)] font-mono focus:outline-none focus:border-[#388bfd] placeholder-[var(--text-3)]"
               placeholder={k.meta?.hint || 'Paste API key…'}
               value={editValue}
               onChange={e => onChange(e.target.value)}
@@ -293,7 +344,7 @@ function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave,
               {saving ? '…' : 'Save'}
             </button>
             <button
-              className="px-3 py-1.5 text-xs rounded border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#6e7681] transition-colors flex-shrink-0"
+              className="px-3 py-1.5 text-xs rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] hover:border-[#6e7681] transition-colors flex-shrink-0"
               onClick={onCancel}
             >
               Cancel
@@ -306,14 +357,14 @@ function ProviderRow({ k, editValue, saving, onEdit, onCancel, onChange, onSave,
       {!isEditing && (
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            className="px-3 py-1 text-xs rounded border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#6e7681] transition-colors"
+            className="px-3 py-1 text-xs rounded border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] hover:border-[#6e7681] transition-colors"
             onClick={onEdit}
           >
             {k.configured ? 'Update' : 'Add'}
           </button>
           {k.configured && (
             <button
-              className="w-7 h-7 flex items-center justify-center text-xs rounded text-[#484f58] hover:text-[#f85149] hover:bg-[#f851491a] transition-colors"
+              className="w-7 h-7 flex items-center justify-center text-xs rounded text-[var(--text-3)] hover:text-[var(--red)] hover:bg-[#f851491a] transition-colors"
               onClick={onDelete}
               title="Remove key"
             >✕</button>

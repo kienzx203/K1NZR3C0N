@@ -18,8 +18,11 @@ from ..config import REDIS_URL, STATIC_DIR
 # backwards compatibility with custom deployments.
 _PACKAGE_STATIC = Path(__file__).resolve().parent.parent / "static"
 _STATIC_DIR = _PACKAGE_STATIC if _PACKAGE_STATIC.exists() else STATIC_DIR
+from ..config import API_TOKEN
 from ..db import RunLog, init_db, db_get
-from .routes import assets, files, findings, keys, opencode, reports, runs, terminal, tools, upload, workflows
+from .auth import TokenAuthMiddleware
+from .routes import (assets, files, findings, health, keys, opencode, reports,
+                     runs, schedules, targets, terminal, tools, upload, workflows)
 
 
 @asynccontextmanager
@@ -40,6 +43,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Outermost: optional bearer-token auth (no-op unless K1NZR3C0N_API_TOKEN is set)
+app.add_middleware(TokenAuthMiddleware)
 
 _V1 = "/api/v1"
 app.include_router(runs.router,      prefix=_V1)
@@ -51,7 +56,16 @@ app.include_router(reports.router,   prefix=_V1)
 app.include_router(keys.router,      prefix=_V1)
 app.include_router(tools.router,     prefix=_V1)
 app.include_router(upload.router,    prefix=_V1)
+app.include_router(health.router,    prefix=_V1)
+app.include_router(schedules.router, prefix=_V1)
+app.include_router(targets.router,   prefix=_V1)
 app.include_router(terminal.router,  prefix="/ws")
+
+
+@app.get("/api/v1/auth/status")
+def auth_status() -> dict:
+    """Lets the UI know whether it must present a token prompt."""
+    return {"auth_required": bool(API_TOKEN)}
 
 # Keep /api/* aliases for backwards compatibility during transition
 app.include_router(runs.router,      prefix="/api", include_in_schema=False)

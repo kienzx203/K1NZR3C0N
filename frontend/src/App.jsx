@@ -11,6 +11,9 @@ import Tools from './pages/Tools.jsx'
 import Workflows from './pages/Workflows.jsx'
 import WorkflowEditor from './pages/WorkflowEditor.jsx'
 import Upload from './pages/Upload.jsx'
+import Schedules from './pages/Schedules.jsx'
+import Targets from './pages/Targets.jsx'
+import CommandPalette from './components/CommandPalette.jsx'
 import { getTheme, applyTheme } from './theme.js'
 
 /* ── Inline icon set (16px, stroke) ───────────────────────────────────────── */
@@ -25,6 +28,8 @@ const I = {
   key: <><circle cx="5" cy="10" r="3" /><path d="M7.2 7.8 13 2M10.5 4.5 13 7M12 3l1.8 1.8" /></>,
   wrench: <path d="M13.5 4.5a3.5 3.5 0 0 1-4.8 4L4 13.2a1.4 1.4 0 0 1-2-2l4.7-4.7a3.5 3.5 0 0 1 4-4.8L8.5 4l.7 2.8L12 7.5z" />,
   spark: <path d="M8 1.5 9.5 6.5 14.5 8 9.5 9.5 8 14.5 6.5 9.5 1.5 8 6.5 6.5z" />,
+  target: <><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="3.2" /><circle cx="8" cy="8" r="0.8" fill="currentColor" /></>,
+  clock: <><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.8" /></>,
   sun: <><circle cx="8" cy="8" r="3.2" /><path d="M8 1v1.8M8 13.2V15M1 8h1.8M13.2 8H15M3 3l1.3 1.3M11.7 11.7 13 13M13 3l-1.3 1.3M4.3 11.7 3 13" /></>,
   moon: <path d="M13.5 9.5A5.5 5.5 0 0 1 6.5 2.5a5.5 5.5 0 1 0 7 7z" />,
 }
@@ -64,6 +69,8 @@ const NAV_GROUPS = [
       { to: '/workflows', label: 'Workflows', icon: I.flow },
       { to: '/findings',  label: 'Findings',  icon: I.flag },
       { to: '/inventory', label: 'Inventory', icon: I.boxes },
+      { to: '/targets',   label: 'Targets',   icon: I.target },
+      { to: '/schedules', label: 'Schedules', icon: I.clock },
     ],
   },
   {
@@ -180,6 +187,8 @@ export default function App() {
           <Route path="/workflows/:name"       element={<WorkflowEditor />} />
           <Route path="/findings"              element={<Findings />} />
           <Route path="/inventory"             element={<Inventory />} />
+          <Route path="/targets"               element={<Targets />} />
+          <Route path="/schedules"             element={<Schedules />} />
           <Route path="/upload"                element={<Upload />} />
           <Route path="/terminal"              element={<Terminal />} />
           <Route path="/keys"                  element={<Keys />} />
@@ -187,6 +196,8 @@ export default function App() {
           <Route path="*"                      element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+
+      <CommandPalette />
     </div>
   )
 }

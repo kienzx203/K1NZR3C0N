@@ -34,10 +34,10 @@ function DropZone({ accept, label, hint, onFiles, disabled }) {
       className={`
         relative border-2 border-dashed rounded-lg px-6 py-10 text-center cursor-pointer transition-colors
         ${over && !disabled
-          ? 'border-[#58a6ff] bg-[#58a6ff0d]'
+          ? 'border-[var(--accent)] bg-[#58a6ff0d]'
           : disabled
-            ? 'border-[#21262d] opacity-50 cursor-not-allowed'
-            : 'border-[#30363d] hover:border-[#58a6ff66] hover:bg-[#161b22]'
+            ? 'border-[var(--surface-2)] opacity-50 cursor-not-allowed'
+            : 'border-[var(--border)] hover:border-[#58a6ff66] hover:bg-[var(--surface-2)]'
         }
       `}
     >
@@ -51,8 +51,8 @@ function DropZone({ accept, label, hint, onFiles, disabled }) {
         disabled={disabled}
       />
       <div className="text-3xl mb-2 select-none">↑</div>
-      <p className="text-[#e6edf3] text-sm font-medium">{label}</p>
-      <p className="text-[#8b949e] text-xs mt-1">{hint}</p>
+      <p className="text-[var(--text)] text-sm font-medium">{label}</p>
+      <p className="text-[var(--text-2)] text-xs mt-1">{hint}</p>
     </div>
   )
 }
@@ -63,7 +63,7 @@ function UploadRow({ name, status, error }) {
     <div className={`flex items-center gap-2 text-xs py-1 px-2 rounded font-mono
       ${status === 'done'    ? 'text-[#56d364]' :
         status === 'error'   ? 'text-[#ff7b72]' :
-        status === 'loading' ? 'text-[#d29922]' : 'text-[#8b949e]'}`}>
+        status === 'loading' ? 'text-[var(--amber)]' : 'text-[var(--text-2)]'}`}>
       <span>{status === 'loading' ? '…' : status === 'done' ? '✓' : '✕'}</span>
       <span className="flex-1 truncate">{name}</span>
       {error && <span className="text-[10px] opacity-75">{error}</span>}
@@ -83,7 +83,7 @@ function FileItem({ name, size, lines, path, onDelete }) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[#161b22] group transition-colors">
+    <div className="flex items-center gap-2 px-3 py-2 rounded hover:bg-[var(--surface-2)] group transition-colors">
       <span className="text-[#6e7681] text-xs font-mono flex-1 truncate">{name}</span>
       {lines ? <span className="text-[10px] text-[#6e7681] flex-shrink-0">{fmtLines(lines)}</span> : null}
       <span className="text-[10px] text-[#6e7681] flex-shrink-0">{fmt(size)}</span>
@@ -91,7 +91,7 @@ function FileItem({ name, size, lines, path, onDelete }) {
         <button
           onClick={copy}
           title="Copy path"
-          className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] transition-all flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] transition-all flex-shrink-0"
         >
           {copied ? '✓' : 'copy path'}
         </button>
@@ -104,7 +104,7 @@ function FileItem({ name, size, lines, path, onDelete }) {
         }}
         title="Delete"
         disabled={deleting}
-        className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[#21262d] border border-[#30363d] text-[#ff7b72] hover:bg-[#ff7b7222] transition-all flex-shrink-0 disabled:opacity-40"
+        className="opacity-0 group-hover:opacity-100 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[#ff7b72] hover:bg-[#ff7b7222] transition-all flex-shrink-0 disabled:opacity-40"
       >
         {deleting ? '…' : 'delete'}
       </button>
@@ -115,12 +115,12 @@ function FileItem({ name, size, lines, path, onDelete }) {
 // ── Section wrapper ───────────────────────────────────────────────────────────
 function Section({ title, icon, badge, children }) {
   return (
-    <div className="bg-[#161b22] border border-[#30363d] rounded-lg overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-[#30363d]">
+    <div className="bg-[var(--surface)] border border-[var(--border)] rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
         <span className="text-sm">{icon}</span>
-        <span className="text-sm font-semibold text-[#e6edf3]">{title}</span>
+        <span className="text-sm font-semibold text-[var(--text)]">{title}</span>
         {badge != null && (
-          <span className="ml-auto text-xs bg-[#21262d] border border-[#30363d] text-[#8b949e] px-2 py-0.5 rounded-full">
+          <span className="ml-auto text-xs bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-2)] px-2 py-0.5 rounded-full">
             {badge}
           </span>
         )}
@@ -223,10 +223,10 @@ export default function UploadPage() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
       <div>
-        <h1 className="text-lg font-bold text-[#e6edf3]">Upload</h1>
-        <p className="text-xs text-[#8b949e] mt-0.5">
-          Wordlists are saved to <code className="text-[#58a6ff]">/app/wordlists/</code> — reference them directly in workflow vars.
-          Workflows are saved to <code className="text-[#58a6ff]">/app/workflows/</code>.
+        <h1 className="text-lg font-bold text-[var(--text)]">Upload</h1>
+        <p className="text-xs text-[var(--text-2)] mt-0.5">
+          Wordlists are saved to <code className="text-[var(--accent)]">/app/wordlists/</code> — reference them directly in workflow vars.
+          Workflows are saved to <code className="text-[var(--accent)]">/app/workflows/</code>.
         </p>
       </div>
 
@@ -248,11 +248,11 @@ export default function UploadPage() {
 
         {/* File list */}
         {loadingWl ? (
-          <p className="text-xs text-[#8b949e] px-3">Loading…</p>
+          <p className="text-xs text-[var(--text-2)] px-3">Loading…</p>
         ) : wordlists.length === 0 ? (
-          <p className="text-xs text-[#8b949e] px-3">No wordlists uploaded yet</p>
+          <p className="text-xs text-[var(--text-2)] px-3">No wordlists uploaded yet</p>
         ) : (
-          <div className="border border-[#30363d] rounded divide-y divide-[#21262d]">
+          <div className="border border-[var(--border)] rounded divide-y divide-[var(--surface-2)]">
             {wordlists.map(w => (
               <FileItem
                 key={w.name}
@@ -285,11 +285,11 @@ export default function UploadPage() {
 
         {/* File list */}
         {loadingWf ? (
-          <p className="text-xs text-[#8b949e] px-3">Loading…</p>
+          <p className="text-xs text-[var(--text-2)] px-3">Loading…</p>
         ) : workflows.length === 0 ? (
-          <p className="text-xs text-[#8b949e] px-3">No workflows found</p>
+          <p className="text-xs text-[var(--text-2)] px-3">No workflows found</p>
         ) : (
-          <div className="border border-[#30363d] rounded divide-y divide-[#21262d]">
+          <div className="border border-[var(--border)] rounded divide-y divide-[var(--surface-2)]">
             {workflows.map(w => (
               <FileItem
                 key={w.name}
