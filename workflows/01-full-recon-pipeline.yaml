@@ -899,6 +899,32 @@ steps:
   requires:
   - path: '{workspace}/passive_merged.txt'
     min_bytes: 1
+
+- id: st_intel_retry
+  name: '[intel] SecurityTrails top-up — refill sections lost to network flapping'
+  depends_on:
+  - merge_passive
+  run_on_failed_deps: true
+  when: '{vars.run_passive}'
+  shell: true
+  optional: true
+  timeout: 15m
+  # NAT dead windows usually kill only SOME sections of the --mode all run
+  # (e.g. WHOIS/records die, subdomains survive). This tops up whatever is
+  # still empty — 3 attempts per section, 20s apart. Runs AFTER merge_passive
+  # so it never races the subdomain pipeline.
+  run: |
+    ST_KEY="${SECURITYTRAILS_KEY:-}"
+    ST_COOKIE="${ST_COOKIE:-}"
+    [ -z "$ST_KEY" ] && exit 0
+    python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
+      --mode missing --out {workspace} --pivot-types ns,mx ${ST_COOKIE:+--cookie "$ST_COOKIE"} || true
+    for f in st_dns_records.txt st_associated.txt st_pivot_domains.txt; do
+      touch {workspace}/$f
+    done
+  outputs:
+    file: '{workspace}/st_pivot_domains.txt'
+
 - id: recursive_enum
   name: '[passive] recursive subfinder — enumerate sub-subdomains of wildcard/broad hosts'
   depends_on:
@@ -1350,19 +1376,45 @@ steps:
   requires:
   - path: '{workspace}/subdomains_all.txt'
     min_bytes: 1
-- id: puredns_resolve
-  name: DNS resolve pass-1 — puredns mass-resolve + wildcard filter (massdns engine)
+
+- id: resolver_preflight
+  name: '[resolve] probe resolvers — keep only the ones alive from this network'
   depends_on:
   - merge_all_subdomains
   run_on_failed_deps: true
   shell: true
   optional: true
-  skip_if_exists: true
+  timeout: 10m
+  # On flapping NATs most public resolvers in a 13k list are unreachable —
+  # mass-resolving through them silently drops live subdomains (observed:
+  # 685 candidates → 56 live when ~60% of resolvers were dead). Prefilter to
+  # trusted + gateway + probed-alive resolvers fixes the resolve rate.
+  run: |
+    python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/resolver_filter.py \
+      {vars.resolvers_file} {workspace}/resolvers_filtered.txt \
+      --max-probes 600 --threads 60 || true
+    test -s {workspace}/resolvers_filtered.txt || \
+      printf '8.8.8.8\n8.8.4.4\n1.1.1.1\n1.0.0.1\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_filtered.txt
+    printf 'resolver preflight: %s alive resolvers\n' "$(wc -l < {workspace}/resolvers_filtered.txt)"
+  outputs:
+    file: '{workspace}/resolvers_filtered.txt'
+
+- id: puredns_resolve
+  name: DNS resolve pass-1 — puredns mass-resolve + wildcard filter (massdns engine)
+  depends_on:
+  - resolver_preflight
+  run_on_failed_deps: true
+  shell: true
+  optional: true
   retries: 1
   timeout: 30m
   run: |
-    # Explicit if/else — see massdns_brute note on the `a && b || c && d` precedence trap.
-    if test -s {vars.resolvers_file}; then
+    # Resolver priority: preflight-filtered (alive from THIS network) first,
+    # then the raw trickest list, then hardcoded fallback.
+    # (skip_if_exists removed: re-runs must re-resolve with fresh resolvers.)
+    if test -s {workspace}/resolvers_filtered.txt; then
+      RFILE={workspace}/resolvers_filtered.txt
+    elif test -s {vars.resolvers_file}; then
       RFILE={vars.resolvers_file}
     else
       printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt
@@ -1392,10 +1444,11 @@ steps:
   run: |
     # Pass-2 input: prefer puredns-filtered list; fallback to full candidate list
     INPUT=$(test -s {workspace}/puredns_live.txt && echo {workspace}/puredns_live.txt || echo {steps.merge_all_subdomains.subdomains_all})
-    # Use resolvers_file (13k resolvers) if available, else fall back to 6 hardcoded
-    RFILE={vars.resolvers_file}
-    if test -s "$RFILE"; then
-      RFLAG="-r $RFILE"
+    # Resolver priority: preflight-filtered list first (alive from THIS network)
+    if test -s {workspace}/resolvers_filtered.txt; then
+      RFLAG="-r {workspace}/resolvers_filtered.txt"
+    elif test -s {vars.resolvers_file}; then
+      RFLAG="-r {vars.resolvers_file}"
     else
       RFLAG="-r {vars.dns_resolvers}"
     fi
@@ -1414,10 +1467,93 @@ steps:
   requires:
   - path: '{workspace}/subdomains_resolved.txt'
     min_bytes: 1
+
+- id: resolve_gapfill
+  name: '[resolve] gap-fill — no domain left behind (retry + authoritative NS truth)'
+  depends_on:
+  - dnsx_resolve
+  run_on_failed_deps: true
+  shell: true
+  optional: true
+  timeout: 30m
+  # Pass-1/2 drop hosts queried during NAT dead windows or timed out in one
+  # engine. This step guarantees completeness:
+  #   pass 3 — pause 30s (ride out flapping), retry all gaps via dnsx
+  #   pass 4 — ask the target's OWN authoritative NS for the remainder:
+  #            the zone's source of truth beats any public resolver cache.
+  # Leftover after pass 4 = genuinely unresolvable, listed for the record.
+  run: |
+    CANDS={steps.merge_all_subdomains.subdomains_all}
+    comm -23 <(sort -u "$CANDS" 2>/dev/null) <(sort -u {workspace}/subdomains_resolved.txt 2>/dev/null) > {workspace}/resolve_gaps.txt
+    GAPS=$(wc -l < {workspace}/resolve_gaps.txt)
+    printf 'gap-fill: %s candidates still unresolved after pass-1/2\n' "$GAPS"
+    [ "$GAPS" -eq 0 ] && exit 0
+
+    if test -s {workspace}/resolvers_filtered.txt; then
+      RFLAG="-r {workspace}/resolvers_filtered.txt"
+    elif test -s {vars.resolvers_file}; then
+      RFLAG="-r {vars.resolvers_file}"
+    else
+      RFLAG="-r {vars.dns_resolvers}"
+    fi
+
+    # Pass 3: second engine-timing chance after a flapping pause
+    sleep 30
+    dnsx -l {workspace}/resolve_gaps.txt -silent $RFLAG -t {vars.dnsx_threads} -retry 3 \
+      -a -aaaa -cname -resp -o {workspace}/gap_resp_pass3.txt 2>/dev/null || true
+    touch {workspace}/gap_resp_pass3.txt
+    awk '{print $1}' {workspace}/gap_resp_pass3.txt | sort -u > {workspace}/gap_live_pass3.txt
+
+    # Pass 4: authoritative NS ground truth
+    comm -23 {workspace}/resolve_gaps.txt {workspace}/gap_live_pass3.txt > {workspace}/resolve_gaps2.txt
+    # Look the NS set up through a FILTERED resolver — the system resolver
+    # flaps on bad NATs and returns garbage into auth_ns.txt.
+    FRES=$(head -1 {workspace}/resolvers_filtered.txt 2>/dev/null)
+    if [ -n "$FRES" ]; then
+      dig +short +time=3 +tries=2 @"$FRES" NS {target} 2>/dev/null | sed 's/\.$//' | grep -E '^[a-z0-9.-]+$' | head -4 > {workspace}/auth_ns.txt
+    else
+      dig +short NS {target} 2>/dev/null | sed 's/\.$//' | grep -E '^[a-z0-9.-]+$' | head -4 > {workspace}/auth_ns.txt
+    fi
+    : > {workspace}/gap_live_auth.txt
+    if [ -s {workspace}/auth_ns.txt ]; then
+      # Wildcard guard: if a random label resolves at the auth NS the zone is
+      # wildcarded → skip pass 4 (it would re-add the junk puredns filtered).
+      RND="k1nzr3c0n-$(date +%s)-probe.{target}"
+      NS1=$(head -1 {workspace}/auth_ns.txt)
+      if ! timeout 4 dig +short +time=2 +tries=1 @"$NS1" A "$RND" 2>/dev/null | grep -q .; then
+        while read H; do
+          [ -z "$H" ] && continue
+          (
+            while read NS; do
+              R=$(timeout 4 dig +short +time=2 +tries=1 @"$NS" A "$H" 2>/dev/null | head -1)
+              if [ -n "$R" ]; then echo "$H"; exit 0; fi
+            done < {workspace}/auth_ns.txt
+          ) &
+          while [ "$(jobs -r | wc -l)" -ge 20 ]; do wait -n; done
+        done < {workspace}/resolve_gaps2.txt > {workspace}/gap_live_auth.txt
+        wait
+      else
+        printf 'gap-fill: zone is wildcarded at authoritative NS — auth pass skipped\n'
+      fi
+    fi
+
+    # Union new lives into the shared resolved files downstream already reads
+    cat {workspace}/gap_resp_pass3.txt >> {workspace}/subdomains_resolved_resp.txt
+    cat {workspace}/gap_live_pass3.txt {workspace}/gap_live_auth.txt 2>/dev/null | sort -u >> {workspace}/subdomains_resolved.txt
+    sort -u {workspace}/subdomains_resolved.txt -o {workspace}/subdomains_resolved.txt
+    comm -23 {workspace}/resolve_gaps2.txt <(sort -u {workspace}/gap_live_auth.txt 2>/dev/null) > {workspace}/resolve_leftover.txt
+    printf 'gap-fill: pass3=+%s, auth_ns=+%s → total resolved %s | leftover %s\n' \
+      "$(wc -l < {workspace}/gap_live_pass3.txt)" "$(wc -l < {workspace}/gap_live_auth.txt)" \
+      "$(wc -l < {workspace}/subdomains_resolved.txt)" "$(wc -l < {workspace}/resolve_leftover.txt)"
+  outputs:
+    file: '{workspace}/subdomains_resolved.txt'
+
 - id: ip_group_analyze
   name: '[IP] group resolved hosts by IP — shared-hosting detection + origin IP list'
   depends_on:
-  - dnsx_resolve
+  # gapfill (not dnsx_resolve): gapfill appends pass-3/pass-4 recoveries to
+  # subdomains_resolved_resp.txt — grouping must see the complete file.
+  - resolve_gapfill
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1608,17 +1744,27 @@ steps:
   name: merge DNS resolved + TLS SAN + PTR + DNS records → comprehensive host list
   depends_on:
   - dnsx_san_resolve
+  - resolve_gapfill
   run_on_failed_deps: true
   timeout: 5m
   shell: true
   run: |
+    # Same defensive cleaning as merge_passive/merge_all_subdomains:
+    # TLS-SAN/PTR/DNS-record sources can carry junk (URLs, wildcards, IPs)
+    # AND adjacent-org hostnames from shared certificates — those are OUT of
+    # scope and must not enter the scan list (they stay visible in the raw
+    # subdomains_tlsx_resolved.txt for manual review).
     (
       cat {workspace}/subdomains_resolved.txt      2>/dev/null || true
       cat {workspace}/subdomains_tlsx_resolved.txt 2>/dev/null || true
       cat {workspace}/ptr_resolved.txt             2>/dev/null || true
       cat {workspace}/dns_records_subs.txt         2>/dev/null || true
-    ) | sort -u > {workspace}/subdomains_all_resolved.txt
-    printf 'Total resolved (DNS+TLS+PTR+Records): %s\n' \
+    ) | sed 's|https\?://||; s|/.*||; s|^\*\.||; s|\.$||; s|[[:space:]].*||' \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
+      | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
+      | sort -u > {workspace}/subdomains_all_resolved.txt
+    printf 'Total resolved (DNS+TLS+PTR+Records, scope-filtered): %s\n' \
       "$(wc -l < {workspace}/subdomains_all_resolved.txt)" >> {workspace}/resolve_stats.txt || true
   outputs:
     all_resolved: '{workspace}/subdomains_all_resolved.txt'
@@ -1686,9 +1832,9 @@ steps:
   outputs:
     file: '{workspace}/naabu_asn.jsonl'
 - id: deep_portscan
-  name: deep port scan — rustscan full range + nmap service detection
+  name: deep port scan — rustscan full range + nmap service detection (TAIL step)
   depends_on:
-  - naabu_asn_scan
+  - final_report
   run_on_failed_deps: true
   # NOTE: on a fanout step the engine ignores this parent timeout — the
   # effective cap is fanout_timeout_default below (kept equal for clarity).
@@ -1697,12 +1843,18 @@ steps:
   optional: true
   fanout_concurrency: 1
   fanout_timeout_default: 4h
+  # Moved to the very END of the pipeline: full-range port scans take hours
+  # and used to gate the whole web-testing chain via extract_web_targets.
+  # Now everything else finishes first; this runs as the tail. Input prefers
+  # origin (non-CDN) hosts — scanning CDN edges is wasted effort.
   fanout:
   - id: rustscan_full
     shell: true
     run: |
-      # Use all resolved subdomains if available; fallback to root target
-      if test -s {workspace}/subdomains_all_resolved.txt; then
+      # Input priority: origin hosts (non-CDN) → all resolved → root target
+      if test -s {workspace}/origin_hosts.txt; then
+        INPUT={workspace}/origin_hosts.txt
+      elif test -s {workspace}/subdomains_all_resolved.txt; then
         INPUT={workspace}/subdomains_all_resolved.txt
       else
         printf '%s\n' {target} > {workspace}/rustscan_hosts.txt
@@ -1736,14 +1888,27 @@ steps:
     optional: true
   - id: nmap_service
     shell: true
-    run: test -s {workspace}/subdomains_all_resolved.txt && nmap {vars.nmap_flags} -iL {workspace}/subdomains_all_resolved.txt -oN {workspace}/nmap_service.txt 2>/dev/null; touch {workspace}/nmap_service.txt
+    run: |
+      # Same origin-first input priority as rustscan_full
+      if test -s {workspace}/origin_hosts.txt; then
+        NINPUT={workspace}/origin_hosts.txt
+      elif test -s {workspace}/subdomains_all_resolved.txt; then
+        NINPUT={workspace}/subdomains_all_resolved.txt
+      else
+        NINPUT=""
+      fi
+      test -n "$NINPUT" && nmap {vars.nmap_flags} -iL "$NINPUT" -oN {workspace}/nmap_service.txt 2>/dev/null; touch {workspace}/nmap_service.txt
     outputs:
       file: '{workspace}/nmap_service.txt'
     optional: true
 - id: extract_web_targets
   name: extract web targets — resolved hosts + naabu web ports (80/443/8x)
   depends_on:
-  - deep_portscan
+  - merge_all_resolved
+  - naabu_asn_scan
+  # Was depending on deep_portscan (hours-long full-range scan) which gated
+  # the entire web chain. This step only consumes subdomains_all_resolved.txt
+  # + naabu.jsonl — both ready far earlier.
   run_on_failed_deps: true
   timeout: 5m
   shell: true

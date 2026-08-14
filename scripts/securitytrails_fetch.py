@@ -484,6 +484,30 @@ def _pivot_hackertarget(value: str) -> list[str]:
         return []
 
 
+def _pivot_viewdns(value: str) -> list[str]:
+    """Second reverse-NS source (viewdns.info) — merges past hackertarget's
+    ~500-row cap. Best effort: free tier sometimes captcha-limits."""
+    try:
+        r = subprocess.run(
+            ["curl", "-sS", "--max-time", "20",
+             "-A", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+             f"https://viewdns.info/reversens/?ns={value}"],
+            capture_output=True, text=True, timeout=25)
+        html = r.stdout
+        if not html or "recaptcha" in html.lower() or "limit" in html.lower()[:2000]:
+            return []
+        found = set()
+        for m in re.finditer(r"<td[^>]*>\s*([a-z0-9.-]+\.[a-z]{2,})\s*</td>",
+                             html, re.I):
+            h = m.group(1).lower().rstrip(".")
+            if _HOST_RE.match(h):
+                found.add(h)
+        return sorted(found)
+    except Exception as exc:
+        log(f"pivot: viewdns fallback failed: {exc}")
+        return []
+
+
 def _pivot_web_scrape(ns: str, cookie: str) -> list[str]:
     """Scrape securitytrails.com/list/ns/<ns> (needs a logged-in session cookie)."""
     if not cookie:
@@ -557,10 +581,19 @@ def fetch_pivot(api_key: str, domain: str, cookie: str,
                 log(f"pivot: {label} — Search API needs a paid plan"
                     + ("" if cookie else "; set ST_COOKIE to scrape NS lists"))
                 domains = []
-        # Empty (dead network window or no results) → non-AWS fallback source
+        # Empty (dead network window or plan limit) → merge ALL non-AWS
+        # reverse-NS sources. Each caps around ~500 rows; the union covers
+        # more of the true list (e.g. ST web shows 5k+ for busy NS servers).
         if not domains and ns_val:
-            log(f"pivot: {label} — trying hackertarget fallback")
-            domains = _pivot_hackertarget(ns_val)
+            merged: set[str] = set()
+            for src_name, src_fn in (("hackertarget", _pivot_hackertarget),
+                                     ("viewdns", _pivot_viewdns)):
+                log(f"pivot: {label} — trying {src_name}")
+                got = src_fn(ns_val)
+                log(f"pivot: {label} — {src_name}: {len(got)} domain(s)")
+                merged.update(got)
+                time.sleep(2)
+            domains = sorted(merged)
         for d in domains or []:
             if d != domain.lower():
                 found.add(d)
@@ -690,6 +723,61 @@ def main():
             f"domain info / whois / whois history / ssl  → *.json",
         ]
         print("\n".join(summary))
+    elif mode == "missing":
+        # Top-up mode: re-fetch ONLY empty/absent st_* sections left behind
+        # by a --mode all run that hit NAT dead windows part-way. Each section
+        # gets 3 attempts with 20s spacing to wait out flapping.
+        if not os.path.isdir(out_dir):
+            log(f"missing: no such dir: {out_dir}")
+            sys.exit(1)
+
+        def _empty(name: str) -> bool:
+            p = os.path.join(out_dir, name)
+            # <= 3 covers empty files and an empty JSON object "{}" + newline
+            return (not os.path.exists(p)) or os.path.getsize(p) <= 3
+
+        fixed: list[str] = []
+        text_sections = (
+            ("st_subdomains.txt",
+             lambda: sorted(set(fetch_subdomains(api_key, domain)))),
+            ("st_dns_records.txt",
+             lambda: fetch_records(api_key, domain)),
+            ("st_associated.txt",
+             lambda: [d for d in fetch_associated(api_key, domain)
+                      if d != domain.lower()]),
+            ("st_pivot_domains.txt",
+             lambda: fetch_pivot(api_key, domain, cookie, pivot_types, False)),
+        )
+        for name, fetcher in text_sections:
+            if not _empty(name):
+                continue
+            for attempt in range(3):
+                log(f"missing: fetching {name} (attempt {attempt + 1}/3)")
+                data = fetcher()
+                if data:
+                    _write(os.path.join(out_dir, name), data)
+                    fixed.append(f"{name}: {len(data)}")
+                    break
+                time.sleep(20)
+        json_sections = (
+            ("st_domain_info.json", lambda: fetch_domain_info(api_key, domain)),
+            ("st_whois.json", lambda: fetch_whois(api_key, domain)),
+            ("st_whois_history.json", lambda: fetch_whois_history(api_key, domain)),
+            ("st_ssl.json", lambda: fetch_ssl(api_key, domain)),
+        )
+        for name, fetcher in json_sections:
+            if not _empty(name):
+                continue
+            for attempt in range(3):
+                log(f"missing: fetching {name} (attempt {attempt + 1}/3)")
+                data = fetcher()
+                if data:
+                    _write_json(os.path.join(out_dir, name), data)
+                    fixed.append(name)
+                    break
+                time.sleep(20)
+        print("refilled: " + (", ".join(fixed)
+                              if fixed else "nothing (all present or still unreachable)"))
     else:
         log(f"unknown mode: {mode}")
         sys.exit(1)
