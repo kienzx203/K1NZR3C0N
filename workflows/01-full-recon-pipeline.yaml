@@ -631,22 +631,38 @@ steps:
   outputs:
     file: '{workspace}/p_github_code.txt'
 - id: p_securitytrails
-  name: '[passive] securitytrails API — historical passive DNS'
+  name: '[passive] SecurityTrails FULL intel — subdomains + DNS + WHOIS + SSL + pivot'
   depends_on:
   - setup_subfinder_keys
   run_on_failed_deps: true
   when: '{vars.run_passive}'
   shell: true
   optional: true
-  timeout: 5m
-  # Runs in parallel with other passive tools (no network saturation on bare-metal)
+  timeout: 20m
+  # Single --mode all call pulls EVERYTHING the ST API exposes for the target:
+  #   st_subdomains.txt → copied to p_securitytrails.txt (feeds merge_passive)
+  #   st_dns_records.txt, st_domain_info.json, st_whois.json,
+  #   st_whois_history.json, st_ssl.json, st_associated.txt,
+  #   st_pivot_domains.txt (domains sharing NS/MX — INTEL leads only, they do
+  #   NOT enter the scan pipeline; review them, register interesting ones
+  #   under Targets). View everything in the run's "ST Intel" tab.
   run: |
     ST_KEY="${SECURITYTRAILS_KEY:-}"
+    ST_COOKIE="${ST_COOKIE:-}"
     [ -z "$ST_KEY" ] && echo "[securitytrails] no key — skipping" && touch {workspace}/p_securitytrails.txt && exit 0
     python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
-      | sort -u > {workspace}/p_securitytrails.txt || true
-    touch {workspace}/p_securitytrails.txt
-    printf 'SecurityTrails: %s subdomains\n' "$(wc -l < {workspace}/p_securitytrails.txt)"
+      --mode all --out {workspace} --pivot-types ns,mx ${ST_COOKIE:+--cookie "$ST_COOKIE"} || true
+    if [ -s {workspace}/st_subdomains.txt ]; then
+      sort -u {workspace}/st_subdomains.txt > {workspace}/p_securitytrails.txt
+    else
+      touch {workspace}/p_securitytrails.txt
+    fi
+    for f in st_dns_records.txt st_associated.txt st_pivot_domains.txt; do
+      touch {workspace}/$f
+    done
+    printf 'SecurityTrails: %s subdomains, %s dns records, %s associated, %s pivot domains\n' \
+      "$(wc -l < {workspace}/p_securitytrails.txt)" "$(wc -l < {workspace}/st_dns_records.txt)" \
+      "$(wc -l < {workspace}/st_associated.txt)" "$(wc -l < {workspace}/st_pivot_domains.txt)"
   outputs:
     file: '{workspace}/p_securitytrails.txt'
 - id: p_virustotal

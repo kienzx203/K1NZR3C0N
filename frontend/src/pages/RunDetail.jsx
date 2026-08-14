@@ -7,8 +7,9 @@ import FileExplorer from '../components/FileExplorer.jsx'
 import StepProgress from '../components/StepProgress.jsx'
 import FindingsPanel from '../components/FindingsPanel.jsx'
 import ScreenshotGallery from '../components/ScreenshotGallery.jsx'
+import STIntelPanel from '../components/STIntelPanel.jsx'
 
-const TABS = ['Logs', 'Findings', 'Screenshots', 'Files', 'Report']
+const TABS = ['Logs', 'Findings', 'Screenshots', 'ST Intel', 'Files', 'Report']
 
 export default function RunDetail() {
   const { id } = useParams()
@@ -367,6 +368,7 @@ export default function RunDetail() {
         )}
         {tab === 'Findings' && <FindingsPanel runId={id} />}
         {tab === 'Screenshots' && <ScreenshotGallery runId={id} steps={steps} />}
+        {tab === 'ST Intel' && <STIntelPanel runId={id} />}
         {tab === 'Files' && <FileExplorer runId={id} />}
         {tab === 'Report' && (
           <div className="p-6 space-y-4">
