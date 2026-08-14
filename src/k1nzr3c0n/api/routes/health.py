@@ -83,5 +83,7 @@ def health(db: Session = Depends(get_db_dep)) -> dict:
     except Exception:
         checks["stuck_runs"] = {"ok": True, "count": 0}
 
-    all_ok = all(c.get("ok", False) for c in checks.values())
+    # webhook is an optional integration — unconfigured is informational, not degraded
+    graded = {k: c for k, c in checks.items() if k != "webhook"}
+    all_ok = all(c.get("ok", False) for c in graded.values())
     return {"status": "ok" if all_ok else "degraded", "time": datetime.utcnow().isoformat(), "checks": checks}

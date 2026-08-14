@@ -1,0 +1,80 @@
+<div style="font-family:Inter,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0a0d12;color:#e6edf3;min-height:100vh;padding:24px;font-size:14px">
+  <style>
+    .mono{font-family:'Cascadia Code','Fira Code',ui-monospace,monospace}
+    .card{background:linear-gradient(180deg,#12171f,#0d1117);border:1px solid #232c3a;border-radius:10px}
+    .chip{display:inline-flex;align-items:center;gap:4px;font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid;cursor:pointer;background:transparent}
+    .chip:hover{border-color:#2e3a4d}
+    pre{margin:0;font-family:'Cascadia Code',ui-monospace,monospace;font-size:10px;line-height:1.5;color:#9aa7b8;white-space:pre-wrap;word-break:break-all}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+    .pulse{animation:pulse 1.4s ease-in-out infinite}
+    .lbl{font-size:9px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#5c6773}
+  </style>
+
+  <p style="color:#5c6773;font-size:11px;margin:0 0 14px">RUN <span class="mono" style="color:#58a6ff">a3f9c2e17b04</span> · example.com · 01-full-recon-pipeline — <b style="color:#3fb950">running</b></p>
+
+  <!-- ══ StepProgress component (new) ══ -->
+  <div style="border:1px solid #232c3a;border-radius:0 0 10px 10px;padding:12px 24px;background:#0d1117">
+
+    <!-- 1) Summary line -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+      <span style="font-size:12px;color:#9aa7b8" class="mono">31/85 steps</span>
+      <span style="font-size:10px;color:#5c6773">4 skipped</span>
+      <button style="font-size:12px;color:#58a6ff;background:none;border:none;cursor:pointer" class="pulse">◉ puredns_resolve</button>
+      <div style="flex:1;height:6px;background:#181f29;border-radius:99px;overflow:hidden">
+        <div style="width:36%;height:100%;background:#3fb950;border-radius:99px"></div>
+      </div>
+      <span style="font-size:10px;color:#9aa7b8" class="mono">36%</span>
+    </div>
+
+    <!-- 2) LIVE COMMAND of the running step (NEW) -->
+    <div style="display:flex;gap:8px;padding:8px 10px;border-radius:6px;background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.25);margin-bottom:10px">
+      <span class="mono pulse" style="color:#58a6ff;font-size:10px;margin-top:2px">▶</span>
+      <div style="min-width:0;flex:1">
+        <p style="margin:0 0 3px;font-size:10px;font-weight:600;color:#58a6ff">[resolve] puredns resolve — wildcard-filtered candidate resolve</p>
+        <pre style="max-height:54px;overflow:hidden">RFILE=/opt/k1nzr3c0n/runs/example.com/20260814-093012/resolvers_fallback.txt
+puredns resolve /opt/k1nzr3c0n/runs/example.com/20260814-093012/subdomains_all.txt \
+  --resolvers "$RFILE" -l 3000 --wildcard-tests 5 -q 2>/dev/null | sort -u > /opt/…/puredns_live.txt</pre>
+      </div>
+    </div>
+
+    <!-- 3) Step chips (clickable) -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      <span class="chip" style="border-color:rgba(63,185,80,.2);background:rgba(63,185,80,.04);color:#9aa7b8"><span style="color:#3fb950">✓</span> setup_subfinder_keys</span>
+      <span class="chip" style="border-color:rgba(63,185,80,.2);background:rgba(63,185,80,.04);color:#9aa7b8"><span style="color:#3fb950">✓</span> p_subfinder <span style="color:#5c6773">42s</span></span>
+      <span class="chip" style="border-color:rgba(63,185,80,.2);background:rgba(63,185,80,.04);color:#9aa7b8"><span style="color:#3fb950">✓</span> p_amass <span style="color:#5c6773">4m</span></span>
+      <span class="chip" style="border-color:#232c3a;color:#5c6773"><span>–</span> p_chaos</span>
+      <span class="chip" style="border-color:rgba(88,166,255,.33);background:rgba(88,166,255,.05);color:#9aa7b8"><span class="pulse" style="color:#58a6ff">◉</span> puredns_resolve</span>
+      <span class="chip" style="border-color:#232c3a;color:#5c6773"><span>○</span> merge_all_resolved</span>
+      <span class="chip" style="border-color:#232c3a;color:#5c6773"><span>○</span> httpx_probe</span>
+      <span class="chip" style="border-color:rgba(248,81,73,.33);background:rgba(248,81,73,.05);color:#9aa7b8"><span style="color:#f85149">✗</span> axfr_check</span>
+      <span class="chip" style="border-color:#232c3a;color:#5c6773"><span>○</span> nuclei_scan</span>
+    </div>
+
+    <!-- 4) Expanded panel when a chip is clicked (e.g. failed axfr_check) -->
+    <div style="margin-top:10px;padding:12px;border-radius:8px;background:#12171f;border:1px solid #232c3a">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <p style="margin:0;font-size:11px;font-weight:600">[active] AXFR zone transfer — attempt on all authoritative NS records
+          <span class="mono" style="margin-left:8px;font-size:9px;color:#f85149">FAILED</span></p>
+        <span style="font-size:10px;color:#5c6773;cursor:pointer">✕ close</span>
+      </div>
+      <p class="lbl" style="margin:0 0 4px">axfr_check</p>
+      <pre style="background:#0d1117;border:1px solid #232c3a;border-radius:6px;padding:8px">touch /opt/k1nzr3c0n/runs/example.com/20260814-093012/axfr_subs.txt
+NS_LIST=$(dig +short NS example.com 2>/dev/null | sed 's/\.$//')
+if [ -z "$NS_LIST" ]; then echo "[axfr] no NS records found"; exit 0; fi
+for NS in $NS_LIST; do dig AXFR example.com @"$NS" 2>/dev/null | awk … done</pre>
+    </div>
+  </div>
+
+  <div style="margin-top:18px;display:grid;gap:8px;max-width:760px">
+    <p class="lbl" style="margin:0">Cách hoạt động</p>
+    <div class="card" style="padding:10px 14px;font-size:11px;color:#9aa7b8">
+      <b style="color:#e6edf3">Khung xanh ▶</b> — tự hiện câu lệnh của step <b style="color:#58a6ff">đang chạy</b> (không cần click), cập nhật khi step chuyển. Fanout step hiện từng child: <span class="mono">.rustscan_full: rustscan -a …</span>
+    </div>
+    <div class="card" style="padding:10px 14px;font-size:11px;color:#9aa7b8">
+      <b style="color:#e6edf3">Click chip bất kỳ</b> (kể cả pending/failed/ok) — mở panel xem lệnh đầy đủ của step đó, hữu ích khi debug "vì sao step này fail".
+    </div>
+    <div class="card" style="padding:10px 14px;font-size:11px;color:#9aa7b8">
+      <b style="color:#e6edf3">Lệnh pre-render lúc tạo run</b> — <span class="mono">{target}</span>, <span class="mono">{workspace}</span>, <span class="mono">{vars.*}</span> đã thay bằng giá trị thật; <span class="mono">{steps.X.file}</span> (chưa biết trước) giữ nguyên placeholder.
+    </div>
+  </div>
+</div>

@@ -59,10 +59,37 @@ def launch_run(
 
     try:
         wf_data = yaml.safe_load(wf_path.read_text(encoding="utf-8"))
-        step_ids = [s["id"] for s in wf_data.get("steps", []) if isinstance(s, dict) and "id" in s]
+        from ...workflow import render_template
+        # Pre-render each step's command (target/workspace/vars are known at
+        # creation time) so the UI can show WHAT is running per step.
+        # Unknown placeholders ({steps.X.file}) stay literal via allow_missing.
+        merged_vars = dict(wf_data.get("vars") or {})
+        merged_vars.update(vars_dict or {})
+        ctx = {
+            **merged_vars, "vars": merged_vars,
+            "target": target, "workspace": workspace,
+            "timestamp": time.strftime("%Y%m%d-%H%M%S"), "steps": {},
+        }
+        steps_meta = []
+        for s in wf_data.get("steps", []):
+            if not isinstance(s, dict) or "id" not in s:
+                continue
+            meta = {"id": s["id"], "status": "pending", "name": s.get("name") or ""}
+            try:
+                if isinstance(s.get("fanout"), list):
+                    meta["fanout"] = [
+                        {"id": c.get("id", "?"),
+                         "cmd": render_template(str(c.get("run", "")), ctx, allow_missing=True)}
+                        for c in s["fanout"] if isinstance(c, dict)
+                    ]
+                elif s.get("run"):
+                    meta["cmd"] = render_template(str(s["run"]), ctx, allow_missing=True)
+            except Exception:
+                pass
+            steps_meta.append(meta)
+        steps_json = json.dumps(steps_meta)
     except Exception:
-        step_ids = []
-    steps_json = json.dumps([{"id": sid, "status": "pending"} for sid in step_ids])
+        steps_json = json.dumps([])
 
     run_id = uuid.uuid4().hex[:12]
     run = Run(
