@@ -20,6 +20,14 @@ router = APIRouter(tags=["health"])
 def health(db: Session = Depends(get_db_dep)) -> dict:
     checks: dict = {}
 
+    # System DNS — the probe that catches the post-NIC-change breakage
+    # (systemd-resolved stub loses its uplink; recon tools die silently)
+    try:
+        socket.getaddrinfo("dns.google", 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        checks["dns"] = {"ok": True}
+    except OSError as e:
+        checks["dns"] = {"ok": False, "error": str(e)[:200]}
+
     # Redis
     try:
         import redis as redis_lib

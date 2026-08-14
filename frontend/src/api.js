@@ -35,6 +35,10 @@ export const api = {
   authStatus: () => req('GET', '/auth/status'),
   getHealth:  () => req('GET', '/health'),
 
+  // Network & DNS diagnostics + one-click fix
+  networkCheck: () => req('GET', '/network/check'),
+  networkFix:   (body = {}) => req('POST', '/network/fix', body),
+
   // Workflows
   getWorkflows:   () => req('GET', '/workflows'),
   getWorkflow:    (name) => req('GET', `/workflows/${encodeURIComponent(name)}`),

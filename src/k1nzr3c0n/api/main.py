@@ -21,8 +21,9 @@ _STATIC_DIR = _PACKAGE_STATIC if _PACKAGE_STATIC.exists() else STATIC_DIR
 from ..config import API_TOKEN
 from ..db import RunLog, init_db, db_get
 from .auth import TokenAuthMiddleware
-from .routes import (assets, files, findings, health, keys, opencode, reports,
-                     runs, schedules, targets, terminal, tools, upload, workflows)
+from .routes import (assets, files, findings, health, keys, network, opencode,
+                     reports, runs, schedules, targets, terminal, tools, upload,
+                     workflows)
 
 
 @asynccontextmanager
@@ -57,6 +58,7 @@ app.include_router(keys.router,      prefix=_V1)
 app.include_router(tools.router,     prefix=_V1)
 app.include_router(upload.router,    prefix=_V1)
 app.include_router(health.router,    prefix=_V1)
+app.include_router(network.router,   prefix=_V1)
 app.include_router(schedules.router, prefix=_V1)
 app.include_router(targets.router,   prefix=_V1)
 app.include_router(terminal.router,  prefix="/ws")

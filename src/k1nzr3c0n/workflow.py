@@ -848,7 +848,7 @@ def _execute_fanout(step: dict[str, Any], state: _RunState) -> str:
     if not tasks:
         parent_status = 'ok' if completed_count > 0 else 'skipped'
         state.set_status(step_id, parent_status)
-        _step_event('SKIP', step_id)
+        _step_event('DONE' if parent_status == 'ok' else 'SKIP', step_id)
         if state.resume:
             _record_resume(state, step_id, 'ok', {}, skipped=True)
         return parent_status
@@ -956,7 +956,9 @@ def _execute_step(step: dict[str, Any], state: _RunState) -> str:
         if cond:
             warn(f"Skipping '{step_id}' (already completed)")
             state.set_outputs(step_id, outputs)
-            _step_event('SKIP', step_id)
+            # DONE, not SKIP: the step's data exists (reuse/resume) — the UI
+            # must show it green. SKIP made resumed runs lose their checkmarks.
+            _step_event('DONE', step_id)
             state.set_status(step_id, 'ok')
             if state.resume:
                 _record_resume(state, step_id, 'ok', outputs, skipped=True)

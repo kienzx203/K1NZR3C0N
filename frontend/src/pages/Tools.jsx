@@ -49,6 +49,7 @@ function HealthPanel() {
   if (!health) return null
 
   const CHECKS = [
+    ['dns',         'DNS',                        c => c.ok],
     ['redis',       'Redis',                      c => c.ok],
     ['worker',      'Worker',                     c => c.ok],
     ['beat',        'Beat',                       c => c.ok],
@@ -83,6 +84,101 @@ function HealthPanel() {
           <span className="text-[10px]" style={{ color: 'var(--amber)' }}>
             {health.checks.stuck_runs.count} run(s) stuck &gt;13h
           </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const VERDICT_META = {
+  ok:          { label: 'NETWORK OK',    color: 'var(--green)' },
+  dns_broken:  { label: 'DNS BROKEN',    color: 'var(--red)' },
+  no_internet: { label: 'NO INTERNET',   color: 'var(--red)' },
+  https_broken:{ label: 'HTTPS BROKEN',  color: 'var(--amber)' },
+}
+
+function NetworkPanel() {
+  const [state, setState] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api.networkCheck().then(setState).catch(() => {})
+  useEffect(() => { load() }, [])
+
+  async function fix(restore) {
+    setBusy(true)
+    try {
+      setState(await api.networkFix({ restore_stub: restore }))
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!state) return null
+  const v = VERDICT_META[state.verdict] || VERDICT_META.ok
+
+  const PROBES = [
+    ['system_dns', 'System DNS'],
+    ['direct_dns', 'Direct 1.1.1.1'],
+    ['https', 'Outbound HTTPS'],
+  ]
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-2.5 flex-wrap mb-3">
+        <h3 className="section-title">Network & DNS</h3>
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full border"
+              style={{ color: v.color, borderColor: v.color, background: 'transparent' }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
+          {v.label}
+        </span>
+        {state.ips?.length > 0 && (
+          <span className="text-[10px] font-mono" style={{ color: 'var(--text-3)' }}>
+            {state.ips.join(' · ')}
+          </span>
+        )}
+        <div className="flex-1" />
+        <button className="btn btn-ghost" onClick={load} disabled={busy}>↻ Re-check</button>
+      </div>
+
+      <div className="flex gap-2 flex-wrap mb-3">
+        {PROBES.map(([key, label]) => {
+          const p = state[key] || {}
+          return (
+            <span key={key} title={p.detail || ''}
+                  className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-1 rounded-full border"
+                  style={{
+                    color: p.ok ? 'var(--green)' : 'var(--red)',
+                    borderColor: p.ok ? 'rgba(63,185,80,.35)' : 'rgba(248,81,73,.4)',
+                    background: p.ok ? 'rgba(63,185,80,.07)' : 'rgba(248,81,73,.08)',
+                  }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'currentColor' }} />
+              {label}
+            </span>
+          )
+        })}
+        <span className="text-[10px] font-mono self-center" style={{ color: 'var(--text-3)' }}>
+          resolv.conf: {(state.nameservers || []).join(', ') || '—'}
+          {state.is_stub ? ' (systemd stub)' : ' (static)'}
+        </span>
+      </div>
+
+      {state.verdict !== 'ok' && (
+        <p className="text-[11px] mb-3" style={{ color: 'var(--text-2)' }}>{state.hint}</p>
+      )}
+
+      <div className="flex gap-2 flex-wrap">
+        <button className="btn btn-accent" disabled={busy}
+                onClick={() => fix(false)}
+                title="Tự dò resolver đang sống (gateway → 1.1.1.1 → 8.8.8.8) rồi ghi /etc/resolv.conf — đúng cho mọi card mạng">
+          ⚡ Auto-Fix DNS
+        </button>
+        {!state.is_stub && (
+          <button className="btn btn-ghost" disabled={busy}
+                  onClick={() => window.confirm('Khôi phục systemd-resolved stub? DNS sẽ lại phụ thuộc DHCP của card mạng hiện tại.') && fix(true)}>
+            Restore systemd stub
+          </button>
         )}
       </div>
     </div>
@@ -277,6 +373,9 @@ export default function Tools() {
           </button>
         </div>
       </div>
+
+      {/* Network & DNS diagnostics + fix */}
+      <NetworkPanel />
 
       {/* System health */}
       <HealthPanel />

@@ -7,7 +7,7 @@ const STATUS_ICON = {
   ok:       { icon: '✓', cls: 'text-[var(--green)]' },
   skipped:  { icon: '–', cls: 'text-[var(--text-2)]' },
   failed:   { icon: '✗', cls: 'text-[var(--red)]' },
-  paused:   { icon: '', cls: 'text-[var(--amber)]' },
+  paused:   { icon: '⏸', cls: 'text-[var(--amber)]' },
 }
 
 // Make raw step IDs readable: gobuster_dns → "gobuster dns"
@@ -26,24 +26,22 @@ function CmdBlock({ step }) {
   return (
     <div className="space-y-1.5">
       {entries.map(e => (
-        <div key={e.label}>
-          <p className="text-[9px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-3)' }}>
-            {e.label}
-          </p>
-          <pre
-            className="text-[10px] font-mono leading-relaxed p-2 rounded overflow-x-auto whitespace-pre-wrap break-all"
-            style={{ background: 'var(--bg-soft)', color: 'var(--text-2)', border: '1px solid var(--border)' }}
-          >
-            {e.cmd}
-          </pre>
-        </div>
+        <pre
+          key={e.label}
+          className="text-[10px] font-mono leading-snug overflow-hidden whitespace-pre-wrap break-all"
+          style={{ color: 'var(--text-2)' }}
+        >
+          {entries.length > 1 ? `${e.label}:\n` : ''}{e.cmd}
+        </pre>
       ))}
     </div>
   )
 }
 
 export default function StepProgress({ steps, running }) {
-  const [expanded, setExpanded] = useState(null)
+  // Command box is hidden by default — appears only when the user clicks a
+  // step chip (click the same chip again to hide it).
+  const [selected, setSelected] = useState(null)
   if (!steps || steps.length === 0) return null
 
   const done    = steps.filter(s => s.status === 'ok').length
@@ -52,7 +50,7 @@ export default function StepProgress({ steps, running }) {
   const total   = steps.length
   const pct     = Math.round((done / total) * 100)
   const running_steps = steps.filter(s => s.status === 'running')
-  const expandedStep  = steps.find(s => s.id === expanded) || null
+  const selectedStep  = steps.find(s => s.id === selected) || null
 
   // Progress bar: only colour red if any *non-optional* steps failed
   const barColor = failed > 0 ? '#f85149' : '#3fb950'
@@ -71,17 +69,12 @@ export default function StepProgress({ steps, running }) {
           <span className="text-xs text-[var(--red)]">{failed} failed</span>
         )}
         {running_steps.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-            className="text-xs text-[var(--accent)] animate-pulse hover:underline cursor-pointer"
-            title="Click to view this step's command"
-          >
+          <span key={s.id} className="text-xs text-[var(--accent)] animate-pulse">
             ◉ {fmtId(s.id)}
             {s.duration_ms != null && (
               <span className="text-[var(--text-3)] ml-1">{formatDuration(Math.round(s.duration_ms / 1000))}</span>
             )}
-          </button>
+          </span>
         ))}
         {!running && done > 0 && done === total - skipped && failed === 0 && (
           <span className="text-xs text-[var(--green)]">✓ Complete</span>
@@ -95,44 +88,44 @@ export default function StepProgress({ steps, running }) {
         <span className="text-[10px] text-[var(--text-2)] tabular-nums">{pct}%</span>
       </div>
 
-      {/* Live command of the currently running step(s) */}
-      {running_steps.length > 0 && (
-        <div className="mb-2.5 fade-in">
-          {running_steps.map(s => (
-            <div key={s.id} className="flex items-start gap-2 px-2.5 py-1.5 rounded-md"
-                 style={{ background: 'rgba(88,166,255,.06)', border: '1px solid rgba(88,166,255,.25)' }}>
-              <span className="text-[10px] font-mono mt-0.5 animate-pulse" style={{ color: 'var(--accent)' }}>▶</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold mb-0.5" style={{ color: 'var(--accent)' }}>
-                  {s.name || fmtId(s.id)}
-                </p>
-                <pre
-                  className="text-[10px] font-mono leading-snug overflow-hidden whitespace-pre-wrap break-all"
-                  style={{ color: 'var(--text-2)', maxHeight: 54 }}
-                >
-                  {Array.isArray(s.fanout)
-                    ? s.fanout.map(f => `.${f.id}: ${f.cmd}`).join('\n')
-                    : (s.cmd || '…')}
-                </pre>
-              </div>
-            </div>
-          ))}
+      {/* Command box — only when a step chip is clicked */}
+      {selectedStep && (
+        <div className="mb-2.5 fade-in flex items-start gap-2 px-2.5 py-1.5 rounded-md"
+             style={{
+               background: selectedStep.status === 'running' ? 'rgba(88,166,255,.06)' : 'var(--surface)',
+               border: `1px solid ${selectedStep.status === 'running' ? 'rgba(88,166,255,.25)' : 'var(--border)'}`,
+             }}>
+          <span
+            className={`text-[10px] font-mono mt-0.5 ${selectedStep.status === 'running' ? 'animate-pulse' : ''}`}
+            style={{ color: selectedStep.status === 'running' ? 'var(--accent)' : 'var(--text-3)' }}
+          >
+            {selectedStep.status === 'running' ? '▶' : '$'}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold mb-0.5" style={{ color: selectedStep.status === 'running' ? 'var(--accent)' : 'var(--text)' }}>
+              {selectedStep.name || fmtId(selectedStep.id)}
+              <span className="ml-2 text-[9px] font-mono uppercase" style={{ color: 'var(--text-3)' }}>
+                {selectedStep.status}
+              </span>
+            </p>
+            <CmdBlock step={selectedStep} />
+          </div>
         </div>
       )}
 
-      {/* Step chips */}
+      {/* Step chips — click to reveal that step's command above */}
       <div className="flex flex-wrap gap-1.5">
         {steps.map(step => {
           const { icon, cls } = STATUS_ICON[step.status] || STATUS_ICON.pending
           const dur = step.duration_ms != null ? formatDuration(Math.round(step.duration_ms / 1000)) : null
-          const isExp = expanded === step.id
+          const isSel = selected === step.id
           return (
             <button
               key={step.id}
-              onClick={() => setExpanded(isExp ? null : step.id)}
+              onClick={() => setSelected(isSel ? null : step.id)}
               title={`${step.id} · ${step.status}${dur ? ` · ${dur}` : ''} — click to view command`}
               className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer
-                ${isExp               ? 'border-[#58a6ffaa] bg-[#58a6ff1a]'
+                ${isSel                 ? 'border-[#58a6ffaa] bg-[#58a6ff1a]'
                   : step.status === 'running' ? 'border-[#58a6ff55] bg-[#58a6ff0d]'
                   : step.status === 'failed'  ? 'border-[#f8514955] bg-[#f851490d]'
                   : step.status === 'ok'      ? 'border-[#3fb95033] bg-[#3fb9500a]'
@@ -150,25 +143,6 @@ export default function StepProgress({ steps, running }) {
           )
         })}
       </div>
-
-      {/* Expanded command panel for the selected step */}
-      {expandedStep && (
-        <div className="mt-2.5 p-3 rounded-lg fade-in"
-             style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold" style={{ color: 'var(--text)' }}>
-              {expandedStep.name || fmtId(expandedStep.id)}
-              <span className="ml-2 text-[9px] font-mono uppercase" style={{ color: 'var(--text-3)' }}>
-                {expandedStep.status}
-              </span>
-            </p>
-            <button className="btn btn-ghost" style={{ fontSize: 10 }} onClick={() => setExpanded(null)}>
-              ✕ close
-            </button>
-          </div>
-          <CmdBlock step={expandedStep} />
-        </div>
-      )}
     </div>
   )
 }
