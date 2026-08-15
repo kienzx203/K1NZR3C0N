@@ -459,6 +459,36 @@ clone_tool https://github.com/opsdisk/pagodo.git                       /opt/pago
 clone_tool https://github.com/epinna/tplmap.git                        /opt/tplmap       tplmap       tplmap.py
 clone_tool https://github.com/punk-security/dnsReaper.git              /opt/dnsReaper    dnsreaper    main.py
 
+echo -n "  → swaggerspy ..."
+if [[ ! -d /opt/SwaggerSpy ]]; then
+  timeout 30 git clone --depth 1 https://github.com/UndeadSec/SwaggerSpy.git /opt/SwaggerSpy -q 2>/dev/null || true
+fi
+# Upstream swaggerspy.py ships with a SyntaxError (missing comma after the
+# JIRA regex entry). Wrapper patches a runtime COPY so git pull keeps working.
+cat > /opt/SwaggerSpy/_k1nz_patch.py <<'SPYPATCH'
+import sys
+path = sys.argv[1] if len(sys.argv) > 1 else 'swaggerspy.py'
+s = open(path).read()
+orig = s
+s = s.replace("r'ATATTAC[a-zA-Z0-9]{24,48}'\n", "r'ATATTAC[a-zA-Z0-9]{24,48}',\n")
+s = s.replace("'possible_Creds' : r'(?i)(\" \\", "'possible_Creds' : r'(?i)(\\")
+if s != orig:
+    open(path, 'w').write(s)
+SPYPATCH
+cat > /usr/local/bin/swaggerspy <<'SPYWRAP'
+#!/bin/sh
+SRC=/opt/SwaggerSpy/swaggerspy.py
+[ -f "$SRC" ] || { echo "swaggerspy: $SRC not found"; exit 1; }
+RUN=/tmp/swaggerspy_k1nz_$$.py
+cp "$SRC" "$RUN"
+python3 /opt/SwaggerSpy/_k1nz_patch.py "$RUN" 2>/dev/null || true
+python3 "$RUN" "$@"
+rc=$?
+rm -f "$RUN"
+exit $rc
+SPYWRAP
+chmod +x /usr/local/bin/swaggerspy; echo " ✓"
+
 echo -n "  → nosqlmap ..."
 if [[ ! -d /opt/NoSQLMap ]]; then
   timeout 30 git clone --depth 1 https://github.com/codingo/NoSQLMap.git /opt/NoSQLMap -q 2>/dev/null || true

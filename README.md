@@ -127,7 +127,7 @@ Opt-in **Flow 2** (`run_st_pivot_scan`, default off): scans SecurityTrails *pivo
 | `naabu_rate` | `500` | Naabu packet rate (NAT-safe) |
 | `nuclei_rl` / `nuclei_concurrency` | `150` / … | Nuclei rate limiting |
 
-### 02 — JS & Secrets Recon (19 steps)
+### 02 — JS & Secrets Recon (20 steps)
 
 ```
 HTTP probe → crawl (katana + hakrawler + archives) → download JS
@@ -215,7 +215,7 @@ Pre-installed on the Kali box; the **Tools** page tracks versions and updates in
 | **Port Scanning** | `naabu` `rustscan` `nmap` `masscan` |
 | **HTTP Probing** | `httpx` `cdncheck` `tlsx` `gowitness` `whatweb` `wafw00f` |
 | **URL & JS** | `katana` `gau` `gauplus` `waymore` `waybackurls` `hakrawler` `cariddi` `subjs` `linkfinder` `jsubfinder` `jsapiscan` `urlfinder` |
-| **Secrets** | `secretfinder` `trufflehog` `gitleaks` |
+| **Secrets** | `secretfinder` `trufflehog` `gitleaks` `swaggerspy` (SwaggerHub OSINT) |
 | **Param Discovery** | `arjun` `x8` `ffuf` `fallparams` `paramspider` `kiterunner` |
 | **Dir Brute** | `feroxbuster` `dirsearch` `gobuster` |
 | **Vuln Scanning** | `nuclei` (~13.5k templates, auto-updated) `afrog` |

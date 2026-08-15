@@ -2692,10 +2692,27 @@ steps:
   shell: true
   optional: true
   skip_if_exists: true
-  timeout: 3h
-  run: nuclei -l {workspace}/httpx.jsonl -im jsonl -nmhe -jsonl -silent -rl {vars.nuclei_rl} -c {vars.nuclei_concurrency} -timeout {vars.nuclei_timeout} -etags dns -o {workspace}/nuclei_hosts.jsonl 2>/dev/null; touch {workspace}/nuclei_hosts.jsonl
+  timeout: 6h
+  run: |
+    # nuclei -im jsonl expects RAW HTTP REQUESTS (its own jsonl format), NOT
+    # httpx output — on nuclei v3.11 every httpx line failed to parse and only
+    # ~54 offline templates ran, producing ZERO findings (observed 2026-08-15:
+    # "[WRN] jsonl: Could not parse raw request ... failed to read method line").
+    # Feed plain URLs instead → full ~10.5k template set executes.
+    jq -r '.url // empty' {workspace}/httpx.jsonl 2>/dev/null \
+      | sort -u > {workspace}/nuclei_urls.txt
+    if ! test -s {workspace}/nuclei_urls.txt; then
+      touch {workspace}/nuclei_hosts.jsonl; exit 0
+    fi
+    printf 'nuclei_hosts: %s live URLs — full template set\n' "$(wc -l < {workspace}/nuclei_urls.txt)"
+    nuclei -l {workspace}/nuclei_urls.txt -nmhe -jsonl -silent \
+      -rl {vars.nuclei_rl} -c {vars.nuclei_concurrency} -timeout {vars.nuclei_timeout} \
+      -etags dns -o {workspace}/nuclei_hosts.jsonl 2>{workspace}/nuclei_hosts_stderr.log
+    touch {workspace}/nuclei_hosts.jsonl
+    printf 'nuclei_hosts findings: %s\n' "$(wc -l < {workspace}/nuclei_hosts.jsonl)"
   outputs:
     nuclei_jsonl: '{workspace}/nuclei_hosts.jsonl'
+    nuclei_urls: '{workspace}/nuclei_urls.txt'
 - id: nuclei_misconfig
   name: nuclei — misconfigurations + exposures on all resolved hosts
   depends_on:
@@ -2720,11 +2737,12 @@ steps:
   skip_if_exists: true
   timeout: 2h
   run: |
-    touch {workspace}/afrog.jsonl
-    test -s {workspace}/live_urls.txt || exit 0
+    test -s {workspace}/live_urls.txt || { touch {workspace}/afrog.jsonl; exit 0; }
+    printf 'afrog: %s live URLs — PoC scan (critical/high/medium)\n' "$(wc -l < {workspace}/live_urls.txt)"
     afrog -T {workspace}/live_urls.txt -S critical,high,medium \
-      -j {workspace}/afrog.jsonl -silent 2>/dev/null || true
+      -j {workspace}/afrog.jsonl -silent 2>{workspace}/afrog_stderr.log || true
     touch {workspace}/afrog.jsonl
+    printf 'afrog findings: %s\n' "$(wc -l < {workspace}/afrog.jsonl)"
   outputs:
     afrog_jsonl: '{workspace}/afrog.jsonl'
 - id: nuclei_naabu_ports

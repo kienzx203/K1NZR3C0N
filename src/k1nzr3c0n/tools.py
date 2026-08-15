@@ -102,6 +102,16 @@ def _gh_latest(repo: str) -> Optional[str]:
         return None
 
 
+def _git_head_commit(repo: str) -> Optional[str]:
+    """Upstream HEAD short-commit for a git-tracked tool (no releases needed)."""
+    try:
+        out = _sh(["git", "ls-remote", f"https://github.com/{repo}", "HEAD"], timeout=20)
+        sha = out.split()[0] if out.split() else ""
+        return sha[:7] or None
+    except Exception:
+        return None
+
+
 def _gh_asset_url(repo: str, globs: list[str]) -> tuple[str, str]:
     """Return (version_str, download_url) for the first matching asset."""
     data = _gh_release(repo)
@@ -1172,6 +1182,16 @@ TOOLS: list[dict[str, Any]] = [
         "version_re": None,
     },
     {
+        "name": "swaggerspy",
+        "display": "SwaggerSpy",
+        "desc": "OSINT on SwaggerHub — find leaked API specs and scan them for secrets",
+        "cat": "git",
+        "repo": "UndeadSec/SwaggerSpy",
+        "git_dir": "/opt/SwaggerSpy",
+        "version_cmd": None,
+        "version_re": None,
+    },
+    {
         "name": "corsy",
         "display": "corsy",
         "desc": "CORS misconfiguration scanner — origin validation bypass, null origin",
@@ -1456,8 +1476,14 @@ def get_latest_version(tool: dict) -> Optional[str]:
     cat = tool["cat"]
     repo = tool.get("repo")
 
-    if cat in ("gh_binary", "git"):
+    if cat == "gh_binary":
         return _gh_latest(repo) if repo else None
+
+    if cat == "git":
+        # Git-tracked tools are pinned to commits, not release tags — many
+        # (e.g. SwaggerSpy) publish no GitHub releases, so the releases API
+        # 404s. Compare against upstream HEAD commit instead.
+        return _git_head_commit(repo) if repo else None
 
     if cat == "rebuild_only":
         return _gh_latest(repo) if repo else None
