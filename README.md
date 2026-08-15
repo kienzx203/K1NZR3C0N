@@ -107,12 +107,10 @@ Passive subdomain (subfinder/amass/chaos/findomain/securitytrails)
 | Var | Default | Purpose |
 |---|---|---|
 | `run_passive` | `true` | Enable passive subdomain sources |
-| `run_active_dns` | `true` | Enable DNS brute force |
 | `run_permutation` | `true` | Enable subdomain permutation |
 | `run_portscan` | `true` | Enable port scanning |
 | `run_nuclei` | `true` | Enable nuclei vuln scan |
-| `sub_wordlist` | `subdomains-top1million-20000.txt` | Subdomain wordlist |
-| `naabu_rate` | `1500` | Naabu packet rate |
+| `naabu_rate` | `500` | Naabu packet rate |
 | `chaos_key` | _(empty)_ | ProjectDiscovery Chaos API key |
 
 ---

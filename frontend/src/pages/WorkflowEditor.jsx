@@ -589,16 +589,6 @@ const VAR_DOCS = {
       { label: 'api',        value: '/usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt' },
     ],
   },
-  sub_wordlist: {
-    desc: 'Path to subdomain wordlist for DNS brute-forcing',
-    detail: 'Used by Gobuster DNS. Larger lists discover more subdomains but take longer and are noisier.',
-    type: 'path', risk: 'careful',
-    presets: [
-      { label: '5k',     value: '/usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt' },
-      { label: '20k',    value: '/usr/share/seclists/Discovery/DNS/subdomains-top1million-20000.txt' },
-      { label: '110k',   value: '/usr/share/seclists/Discovery/DNS/subdomains-top1million.txt' },
-    ],
-  },
   vhost_wordlist: {
     desc: 'Wordlist for virtual host (vhost) discovery',
     detail: 'Used to brute-force Host: headers. A hit means the server responds differently to a non-standard hostname — potentially a hidden internal site.',
@@ -2754,13 +2744,13 @@ function VarsPanel({ vars, onChange }) {
   // Groups cover vars from both workflow YAMLs.
   // Keys absent from the currently-loaded workflow are silently filtered out.
   const VAR_GROUPS = {
-    // 01-full-recon-pipeline: run_passive, run_active_dns, run_permutation
+    // 01-full-recon-pipeline: run_passive, run_permutation, run_tlsx
     // 02-js-secrets-recon:    run_archive, run_linkfinder, run_jsubfinder, run_secretfinder, run_static_secrets, run_nuclei_js, run_gf, run_dirbrute
     // 03-param-discovery:     run_gau, run_paramspider, run_katana, run_arjun, run_x8, run_ffuf_params, run_nuclei_params
     // k1nzr3con:              run_discovery, run_deep_scan, run_vhost, run_params, run_dirbrute
     'Phase Toggles': [
       'run_passive','run_waymore','run_asn',
-      'run_active_dns','run_permutation','run_tlsx',
+      'run_permutation','run_tlsx',
       'run_portscan','run_asn_portscan','run_deep_portscan',
       'run_screenshot','run_cdncheck','run_crawl',
       'run_js_analysis','run_takeover','run_s3scan',
@@ -2773,8 +2763,8 @@ function VarsPanel({ vars, onChange }) {
       'session_cookie','auth_header','custom_header',
     ],
     'DNS & Discovery': [
-      'dns_resolvers','dnsx_threads','dnsx_retry','shuffledns_threads',
-      'sub_wordlist','sub_wordlist_full','chaos_key','subdomains_list',
+      'dns_resolvers','doh_resolvers','dnsx_threads','doh_threads','dnsx_retry',
+      'chaos_key','subdomains_list',
     ],
     'Port Scan': [
       'naabu_rate','naabu_top_ports',
