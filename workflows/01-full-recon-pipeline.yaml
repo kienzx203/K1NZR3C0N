@@ -56,14 +56,14 @@ vars:
   perm_output_limit: '5000'    # cap dnsgen output before resolving (prevents timeout on large wordlists)
   naabu_rate: '500'            # reduced from 1500 — stable port scan on VMware NAT
   naabu_top_ports: '1000'
-  # SINGLE SOURCE OF TRUTH for web/app ports — used by naabu_topscan +
-  # st_pivot_naabu active scans, extract_web_targets (httpx input filter) and
-  # nuclei_naabu_ports (web ports excluded there, covered by network templates).
+  # SINGLE SOURCE OF TRUTH for web/app ports actively probed by naabu.
   web_ports: '80,81,443,591,593,832,981,1010,1311,2052,2053,2077,2079,2082,2083,2086,2087,2089,2095,2096,2375,2376,2379,2380,2480,3000,3001,3128,3333,3443,4243,4433,4443,4567,4711,4712,4848,4993,5000,5001,5104,5108,5601,5800,6443,6543,7000,7001,7002,7396,7443,7474,7990,8000,8001,8006,8008,8014,8042,8069,8080,8081,8083,8086,8088,8090,8091,8118,8123,8172,8181,8222,8243,8280,8281,8333,8443,8500,8834,8880,8888,8983,9000,9043,9060,9080,9090,9091,9093,9200,9443,9800,9981,9990,10000,10250,10255,11371,12443,15672,16080,18091,18092,20720,28017'
-  # Shared-hosting guard: one cPanel box can expose 40+ live HTTP ports
-  # (observed: affiliate.viettelidc.com.vn) — each becomes a screenshot +
-  # crawl + nuclei target and floods every downstream phase. Cap per host.
-  max_ports_per_host: '20'
+  # Blacklist removed 2026-08-15: httpx now takes EVERY naabu-reported port
+  # (user decision — completeness over probe budget; non-HTTP ports fail fast).
+  # Shared-hosting guard: cap host:port entries per host so one box with a
+  # huge port surface can't flood httpx/nuclei. 50 never triggers on normal
+  # hosts (affiliate.viettelidc peaks at ~35 live web ports).
+  max_ports_per_host: '50'
   rustscan_batch: '2000'       # reduced from 5000
   rustscan_timeout_ms: '3000'  # increased from 2000 — give NAT more time per connection
   nmap_flags: -sV -sC -Pn --open -T4 --max-retries 2
@@ -1859,13 +1859,15 @@ steps:
   run: |
     # Flow: naabu live ports → combine with their host as host:port → httpx
     # probes each domain:port (httpx accepts host:port / ip:port natively).
-    # Filters applied to the host:port half:
-    #   1. WEB PORTS ONLY — naabu.jsonl also holds Shodan-passive records for
-    #      mail/FTP/DNS etc. (465/993/21/53… observed ~25% of records); those
-    #      are not HTTP and belong to nuclei_naabu_ports' network templates.
-    #   2. DROP :80/:443 — bare hosts below already probe default 80/443.
-    #   3. PER-HOST CAP — one shared-hosting box can expose 40+ live HTTP
-    #      ports; each becomes a screenshot+crawl+nuclei target downstream.
+    # Takes EVERY host:port naabu/Shodan reported — odd-port web panels
+    # (8445, 8686, 8041…) are real coverage; non-HTTP ports just fail fast
+    # in httpx and separately get nuclei network templates. Filters kept:
+    #   1. KEEP :80 — httpx scheme-less mode only records the https probe
+    #      (verified 2026-08-15: bare host → https only, twice), so the
+    #      explicit :80 entry is the only way the http:// side gets probed.
+    #      DROP :443 — identical to the bare-host https probe.
+    #   2. PER-HOST CAP 50 — safety valve for pathological port surfaces
+    #      (real hosts peak at ~35 live web ports, never triggers normally).
     (
       cat {workspace}/subdomains_all_resolved.txt 2>/dev/null || true
       if test -f {workspace}/naabu.jsonl; then
@@ -1875,14 +1877,12 @@ steps:
         jq -r 'select(.port) | "\(.host // .ip):\(.port)"' {workspace}/naabu_asn.jsonl 2>/dev/null || true
       fi
     ) | sort -u > {workspace}/.web_targets_raw
-    WEB_PORTS_RE=$(printf '%s' "{vars.web_ports}" | tr ',' '|')
     (
-      # Bare hosts (httpx probes default 80/443 — safety net if naabu missed)
+      # Bare hosts (https safety net — httpx scheme-less records https)
       grep -vE ':[0-9]+$' {workspace}/.web_targets_raw 2>/dev/null || true
-      # host:port entries: web ports only, no :80/:443 dupes, capped per host
+      # ALL naabu host:port entries, minus :443 dupes, capped per host
       grep -E ':[0-9]+$' {workspace}/.web_targets_raw 2>/dev/null \
-        | grep -E ":($WEB_PORTS_RE)$" \
-        | grep -vE ':(80|443)$' \
+        | grep -vE ':443$' \
         | sort -t: -k1,1 -k2,2n \
         | awk -F: -v n={vars.max_ports_per_host} 'c[$1]++ < n' || true
     ) | sort -u > {workspace}/web_targets.txt
