@@ -373,15 +373,27 @@ def _pivot_api_search(api_key: str, filters: dict) -> tuple[list[str] | None, bo
     Body is a FILTER OBJECT: {"filter": {"ns": "ns2.example.com"}} — not the
     DSL query string. Pagination via ?page=N; every page is fetched so deep
     results (e.g. scec.vn on page 30 of 53 for ns2) are never truncated.
+
+    BUGFIX 2026-08-15: the API returns records[].hostname (not "domain"/
+    "apex_domain") and meta.total_pages (not "pages") — the old field names
+    parsed 0 records per page, so every pivot silently fell back to the
+    ~500-row-capped viewdns source and deep domains were lost.
     Returns (domains_or_None_if_plan_lacks_it, got_200).
     """
     domains: list[str] = []
     page = 1
     got_200 = False
     while page <= 1000:   # guard only — loop ends on API's own end-of-data
-        status, data = _http_json(
-            "POST", f"/v1/domains/list?apikey={api_key}&page={page}", api_key,
-            payload={"filter": filters})
+        status, data = None, None
+        for attempt in range(3):   # per-page retry: NAT flaps mid-pagination
+            status, data = _http_json(
+                "POST", f"/v1/domains/list?apikey={api_key}&page={page}", api_key,
+                payload={"filter": filters})
+            if status == 200 and data is not None:
+                break
+            if status in (400, 401, 402, 403, 404):
+                break
+            time.sleep(5)
         if status in (402, 403):
             return (domains if domains else None), True   # plan limit
         if status != 200 or data is None:
@@ -389,12 +401,14 @@ def _pivot_api_search(api_key: str, filters: dict) -> tuple[list[str] | None, bo
         got_200 = True
         recs = []
         for r in data.get("records", []):
-            d = (r.get("domain") or r.get("apex_domain") or "").lower()
+            d = (r.get("hostname") or r.get("domain")
+                 or r.get("apex_domain") or "").lower()
             if _HOST_RE.match(d):
                 recs.append(d)
         domains.extend(recs)
-        pages = data.get("pages")
-        total = data.get("total") or data.get("record_count")
+        meta = data.get("meta") or {}
+        pages = meta.get("total_pages") or meta.get("max_page") or data.get("pages")
+        total = data.get("total") or meta.get("total")
         if not recs:
             break
         if pages is not None and page >= int(pages):

@@ -22,6 +22,7 @@ vars:
   # own httpx probe + own screenshot pass merged into the gallery. It never
   # touches live_urls.txt, so katana/afrog/nuclei NEVER hit those domains.
   run_st_pivot_scan: 'false'
+  pivot_rescan_all: 'false'    # true = Flow 2 re-scans ALL pivots (ignores cross-run dedup)
   run_cdncheck: 'true'
   run_crawl: 'true'
   run_js_analysis: 'true'
@@ -2349,10 +2350,44 @@ steps:
   outputs:
     screenshot_dir: '{workspace}/screenshots'
     gallery_zip: '{workspace}/gowitness-report.zip'
+- id: st_pivot_dedup
+  name: '[ST-pivot] cross-run dedup — only port-scan NEW pivot domains'
+  depends_on:
+  - st_intel_retry
+  run_on_failed_deps: true
+  when: '{vars.run_st_pivot_scan}'
+  shell: true
+  optional: true
+  timeout: 5m
+  # Persistent per-target memory of pivots already port-scanned by earlier
+  # runs (runs/<target>/.seen_pivot_domains.txt). Flow 2's naabu/httpx budget
+  # is then spent on NEW domains only — 6348 pivots re-scanned every run was
+  # the slow part. Outputs of old pivots stay visible via the cross-run
+  # Inventory. pivot_rescan_all=true forces a full rescan (and refreshes seen).
+  run: |
+    SEEN="$(dirname {workspace})/.seen_pivot_domains.txt"
+    touch "$SEEN"
+    if [ "{vars.pivot_rescan_all}" = "true" ]; then
+      sort -u {workspace}/st_pivot_domains.txt 2>/dev/null > {workspace}/st_pivot_new.txt || true
+    else
+      comm -23 <(sort -u {workspace}/st_pivot_domains.txt 2>/dev/null) <(sort -u "$SEEN") \
+        > {workspace}/st_pivot_new.txt || true
+    fi
+    touch {workspace}/st_pivot_new.txt
+    # Mark as seen now so the next run treats them as scanned (even if this
+    # run's naabu later fails — they were attempted).
+    cat {workspace}/st_pivot_new.txt >> "$SEEN" 2>/dev/null || true
+    sort -u -o "$SEEN" "$SEEN"
+    printf '[st_pivot] dedup: %s total / %s NEW this run / %s seen before\n' \
+      "$(wc -l < {workspace}/st_pivot_domains.txt 2>/dev/null || echo 0)" \
+      "$(wc -l < {workspace}/st_pivot_new.txt)" \
+      "$(wc -l < "$SEEN")"
+  outputs:
+    new_pivots: '{workspace}/st_pivot_new.txt'
 - id: st_pivot_naabu
   name: '[ST-pivot] flow 2 — naabu port scan pivot domains (opt-in)'
   depends_on:
-  - extract_live_urls
+  - st_pivot_dedup
   run_on_failed_deps: true
   when: '{vars.run_st_pivot_scan}'
   shell: true
@@ -2361,17 +2396,18 @@ steps:
   # ⚠️ SCOPE WARNING: st_pivot_domains.txt holds OTHER orgs' ROOT domains
   # sharing NS/MX with the target — shared hosting/CDN can make some of them
   # third parties. Opt-in only (run_st_pivot_scan). Mirrors the main
-  # naabu_topscan: Shodan internetdb passive + active scan of the same 100
-  # web/app ports. Deliberately ISOLATED from the main chain: own files only;
-  # katana/afrog/nuclei NEVER see these hosts.
+  # naabu_topscan: Shodan internetdb passive + active scan of the same web/app
+  # ports. Scans ONLY new pivots (st_pivot_dedup) unless pivot_rescan_all.
+  # Deliberately ISOLATED from the main chain: own files only; katana/afrog/
+  # nuclei NEVER see these hosts.
   run: |
     touch {workspace}/st_pivot_naabu.jsonl {workspace}/st_pivot_scan_list.txt
-    test -s {workspace}/st_pivot_domains.txt || exit 0
+    test -s {workspace}/st_pivot_new.txt || exit 0
     # Drop the target itself (already fully covered by flow 1)
-    grep -v -x '{target}' {workspace}/st_pivot_domains.txt 2>/dev/null \
+    grep -v -x '{target}' {workspace}/st_pivot_new.txt 2>/dev/null \
       | tr '[:upper:]' '[:lower:]' | sort -u > {workspace}/st_pivot_scan_list.txt
     COUNT=$(wc -l < {workspace}/st_pivot_scan_list.txt)
-    printf '[st_pivot] flow 2: scanning %s pivot domains (passive + 100 web ports)\n' "$COUNT"
+    printf '[st_pivot] flow 2: scanning %s NEW pivot domains (passive + web ports)\n' "$COUNT"
     [ "$COUNT" -eq 0 ] && exit 0
     # Phase 1: Shodan internetdb passive (free, keyless)
     naabu -list {workspace}/st_pivot_scan_list.txt -passive \
