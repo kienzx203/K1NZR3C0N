@@ -174,6 +174,7 @@ _SUBFINDER_SKIP: frozenset[str] = frozenset({
 # Value format: plain API key, EXCEPT censys which stores "ID:SECRET" (same as DB storage).
 _UNCOVER_PROVIDERS: dict[str, str] = {
     "shodan":     "shodan",
+    "chaos":      "chaos",       # PD Chaos API — was missing, uncover config came out empty
     "censys":     "censys",      # stored as "ID:SECRET" — uncover uses same format
     "fofa":       "fofa",
     "quake":      "quake",

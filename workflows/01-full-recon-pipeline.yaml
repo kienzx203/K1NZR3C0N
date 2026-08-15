@@ -240,8 +240,11 @@ steps:
   shell: true
   optional: true
   skip_if_exists: true
-  timeout: 5m
-  run: amass enum -passive -d {target} -silent -o {workspace}/p_amass.txt 2>/dev/null; touch {workspace}/p_amass.txt
+  timeout: 10m
+  # amass v5 removed the -passive flag (enum is passive by default; -active is
+  # opt-in) — with the old flag amass exited instantly with a usage error and
+  # contributed ZERO subs (observed 2026-08-15). ~2-4min per target.
+  run: amass enum -d {target} -silent -o {workspace}/p_amass.txt 2>/dev/null; touch {workspace}/p_amass.txt
   outputs:
     file: '{workspace}/p_amass.txt'
 - id: p_chaos
@@ -313,15 +316,24 @@ steps:
   optional: true
   skip_if_exists: true
   run: |
+    # -e is REQUIRED: without it uncover defaults to agents including shodan
+    # and dies with "agents [shodan] requires keys" whenever only SOME
+    # providers have keys (observed 2026-08-15 → p_uncover always 0). Use
+    # exactly the providers present in provider-config.yaml.
+    ENGINES=$(grep -oP '^\w+' /root/.config/uncover/provider-config.yaml 2>/dev/null | paste -sd, -)
+    if [ -z "$ENGINES" ]; then
+      echo "[uncover] no providers configured — skipping"
+      touch {workspace}/p_uncover.txt; exit 0
+    fi
     (
-      uncover -q "ssl.cert.subject.cn:{target}"    -silent 2>/dev/null || true
-      uncover -q "ssl.cert.subject.cn:*.{target}"  -silent 2>/dev/null || true
-      uncover -q "domain:{target}"                 -silent 2>/dev/null || true
-      uncover -q "hostname:{target}"               -silent 2>/dev/null || true
-      uncover -q "http.title:{target}"             -silent 2>/dev/null || true
+      uncover -e "$ENGINES" -q "ssl.cert.subject.cn:{target}"    -silent 2>/dev/null || true
+      uncover -e "$ENGINES" -q "ssl.cert.subject.cn:*.{target}"  -silent 2>/dev/null || true
+      uncover -e "$ENGINES" -q "domain:{target}"                 -silent 2>/dev/null || true
+      uncover -e "$ENGINES" -q "hostname:{target}"               -silent 2>/dev/null || true
+      uncover -e "$ENGINES" -q "http.title:{target}"             -silent 2>/dev/null || true
     ) | grep -oP '[a-zA-Z0-9._-]+\.{target}' | sort -u > {workspace}/p_uncover.txt
     touch {workspace}/p_uncover.txt
-    printf 'uncover subs: %s\n' "$(wc -l < {workspace}/p_uncover.txt)"
+    printf 'uncover subs (engines: %s): %s\n' "$ENGINES" "$(wc -l < {workspace}/p_uncover.txt)"
   outputs:
     file: '{workspace}/p_uncover.txt'
 - id: p_uncover_org
@@ -444,9 +456,13 @@ steps:
   timeout: 5m
   run: |
     (
-      curl -s "https://crt.sh/?q=%.{target}&output=json" --max-time 60 2>/dev/null \
+      curl -s -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+        --retry 3 --retry-delay 15 --retry-max-time 180 \
+        "https://crt.sh/?q=%.{target}&output=json" --max-time 60 2>/dev/null \
         | jq -r '.[].name_value' 2>/dev/null | tr ',' '\n' | sed 's/^\*\.//' || true
-      curl -s "https://crt.sh/?q={target}&output=json" --max-time 60 2>/dev/null \
+      curl -s -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+        --retry 3 --retry-delay 15 --retry-max-time 180 \
+        "https://crt.sh/?q={target}&output=json" --max-time 60 2>/dev/null \
         | jq -r '.[].name_value' 2>/dev/null | tr ',' '\n' | sed 's/^\*\.//' || true
     ) | tr '[:upper:]' '[:lower:]' \
       | grep -E "\.{target}$|^{target}$" | sort -u > {workspace}/p_crtsh.txt || true
@@ -472,9 +488,15 @@ steps:
     for PAGE in $(seq 1 20); do
       URL="https://api.certspotter.com/v1/issuances?domain={target}&include_subdomains=true&expand=dns_names"
       [ -n "$AFTER" ] && URL="$URL&after=$AFTER"
-      RESP=$(eval curl -sL "$URL" $TOKEN --max-time 30 2>/dev/null)
-      COUNT=$(echo "$RESP" | jq 'length' 2>/dev/null || echo 0)
-      COUNT=${COUNT:-0}
+      # 3 attempts with backoff: CT APIs 429/flap and a dead first page used
+      # to kill the whole pagination loop with 0 results.
+      for TRY in 1 2 3; do
+        RESP=$(eval curl -sL "$URL" $TOKEN --max-time 30 2>/dev/null)
+        COUNT=$(echo "$RESP" | jq 'length' 2>/dev/null || echo 0)
+        COUNT=${COUNT:-0}
+        [ "$COUNT" -gt 0 ] && break
+        sleep $((TRY * 10))
+      done
       [ "$COUNT" -le 0 ] && break
       echo "$RESP" | jq -r '.[].dns_names[]' 2>/dev/null \
         | sed 's/^\*\.//' | tr '[:upper:]' '[:lower:]' \
@@ -518,7 +540,9 @@ steps:
   run: |
     > {workspace}/p_alienvault.txt
     for PAGE in 1 2 3 4 5; do
-      RESP=$(curl -s "https://otx.alienvault.com/api/v1/indicators/domain/{target}/passive_dns?page=${PAGE}&limit=100" --max-time 30 2>/dev/null)
+      RESP=$(curl -s -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+      --retry 3 --retry-delay 10 \
+      "https://otx.alienvault.com/api/v1/indicators/domain/{target}/passive_dns?page=${PAGE}&limit=100" --max-time 30 2>/dev/null)
       COUNT=$(echo "$RESP" | jq '.count // 0' 2>/dev/null || echo 0)
       COUNT=${COUNT:-0}
       echo "$RESP" | jq -r '.passive_dns[]?.hostname // empty' 2>/dev/null \
@@ -585,11 +609,17 @@ steps:
     MAX_RESULTS=1000
     OFFSET=0
     while [ "$OFFSET" -lt "$MAX_RESULTS" ]; do
-      RESP=$(curl -sL $URLSCAN_HEADER \
-        "https://urlscan.io/api/v1/search/?q=domain:{target}&size=${PAGE_SIZE}&from=${OFFSET}" \
-        --max-time 20 2>/dev/null)
-      COUNT=$(echo "$RESP" | jq '.results | length' 2>/dev/null || echo 0)
-      COUNT=${COUNT:-0}
+      # 3 attempts with backoff — urlscan public tier 429s bursty NAT egress;
+      # a dead first page used to abort the loop with 0 results.
+      for TRY in 1 2 3; do
+        RESP=$(curl -sL $URLSCAN_HEADER \
+          "https://urlscan.io/api/v1/search/?q=domain:{target}&size=${PAGE_SIZE}&from=${OFFSET}" \
+          --max-time 20 2>/dev/null)
+        COUNT=$(echo "$RESP" | jq '.results | length' 2>/dev/null || echo 0)
+        COUNT=${COUNT:-0}
+        [ "$COUNT" -gt 0 ] && break
+        sleep $((TRY * 10))
+      done
       [ "$COUNT" -le 0 ] && break
       echo "$RESP" | jq -r '.results[].page.domain // empty' 2>/dev/null \
         | grep -E "(^|\.)$(echo {target} | sed 's/\./\\./g')$" >> {workspace}/p_urlscan.txt || true
