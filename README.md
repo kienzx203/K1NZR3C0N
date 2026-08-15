@@ -37,21 +37,39 @@ Browser → FastAPI (k1nzr3c0n-app :8000) → SQLite (runs/k1nzr3c0n.db)
 
 ## Quick Start (Kali Linux)
 
-```bash
-# 1. Copy the deploy bundle to the Kali box, then on the box:
-bash deploy-to-kali.sh /path/to/k1nzr3c0n-deploy.tar.gz
+**Fresh box — one-time install** (system packages, Go toolchain, ~100 tools,
+wordlists, app deploy, systemd services, seeds API keys into the DB):
 
-# 2. Manage services
+```bash
+sudo bash install.sh
+# Secrets are read from install-secrets.env (gitignored, never commit).
+# Re-seed keys only, after editing that file:
+sudo bash install.sh --seed-only
+```
+
+**Upgrade an existing box** — copy the deploy bundle over, then on the box:
+
+```bash
+bash deploy-to-kali.sh /path/to/k1nzr3c0n-deploy.tar.gz
+```
+
+The deploy script rsyncs the app into `/opt/k1nzr3c0n/` without touching
+`runs/`, `.env`, `wordlists/`, or the database — safe to re-run. It does **not**
+reinstall tools; the **Tools** page in the UI tracks installed vs latest
+versions and updates them in place (nuclei templates auto-update daily).
+
+### Managing services
+
+```bash
 bash start.sh            # start redis + app + worker + beat
 bash start.sh status     # show status of all services
 bash start.sh logs       # tail app logs (or: start.sh logs k1nzr3c0n-worker)
 bash start.sh restart    # restart everything
 
-# 3. Open the UI
+# Open the UI
 xdg-open http://127.0.0.1:8000
 ```
 
-The deploy script rsyncs the app into `/opt/k1nzr3c0n/` without touching `runs/`, `.env`, `wordlists/`, or the database — safe to re-run for upgrades. Security tools themselves (subfinder, nuclei, httpx, …) are expected pre-installed on the Kali box; the **Tools** page in the UI tracks installed vs latest versions and updates them in place.
 
 ### Web UI tour
 
@@ -259,21 +277,50 @@ python3 scripts/restore.py    # restore from snapshot
 
 ## Environment
 
-Edit `/opt/k1nzr3c0n/.env` (never commit):
+All runtime configuration lives in `/opt/k1nzr3c0n/.env` — loaded by systemd via
+`EnvironmentFile=` for both the app and the worker services. The deploy script
+never overwrites it. Edit and restart services (`bash start.sh restart`).
 
 ```env
-# Optional bearer-token auth for the API/UI (empty = auth disabled)
-K1NZR3C0N_API_TOKEN=...
+# ── System ────────────────────────────────────────────────────────────────
+K1NZR3C0N_BASE=/opt/k1nzr3c0n          # install root (workflows/, runs/, …)
+REDIS_URL=redis://127.0.0.1:6379/0     # Celery broker/backend
+CHROME_PATH=/usr/bin/chromium          # Chromium used by gowitness screenshots
 
-# Discord/Slack webhook — run completion, new assets, critical findings
+# ── App features ──────────────────────────────────────────────────────────
+# Optional bearer-token auth for API + UI. EMPTY = AUTH DISABLED — leave it
+# empty only on trusted networks.
+K1NZR3C0N_API_TOKEN=
+
+# Discord/Slack webhook — run completion, new assets, critical/high findings
 K1NZR3C0N_WEBHOOK_URL=https://discord.com/api/webhooks/...
+K1NZR3C0N_WEBHOOK_USERNAME=k1nzr3c0n   # Slack-style sender name only
 
-# GitHub token: raises API rate limit 60 → 5,000 req/hr for tool updates
+# GitHub token: raises API rate limit 60 → 5,000 req/hr for tool update checks
+# Create at: https://github.com/settings/tokens (no scopes needed)
 GITHUB_TOKEN=github_pat_...
 
-# Intel provider keys — prefer the /keys UI (stored in DB, injected at run
-# start, no restart needed): SecurityTrails, Shodan, VirusTotal, Chaos, …
+# OpenCode (embedded AI in the UI)
+OPENROUTER_API_KEY=sk-or-...
+
+# ── Intel provider keys ───────────────────────────────────────────────────
+# PREFER THE /keys UI: keys stored in the DB are injected into every run's
+# environment automatically at run start (no restart needed). Values below
+# act as fallback/seed only.
+SECURITYTRAILS_KEY=...
+SHODAN_API_KEY=...
+VIRUSTOTAL_KEY=...
+CHAOS_API_KEY=...
+CENSYS_API_ID=...
+CENSYS_API_SECRET=...
+BEVIGIL_KEY=...
+FOFA_KEY=...
 ```
+
+**Key resolution order:** at run start the worker overlays the DB keys
+(`/keys` UI) onto the subprocess environment, so a key set in the UI wins and
+takes effect on the very next run without any service restart.
+
 
 ---
 
@@ -289,9 +336,11 @@ GITHUB_TOKEN=github_pat_...
 
 ```
 K1NZR3C0N/
-├── deploy-to-kali.sh            # deploy bundle installer (run ON the Kali box)
+├── install.sh                   # one-time bare-metal installer (tools + app + services)
+├── install-secrets.env          # API keys for install.sh — gitignored, never commit
+├── deploy-to-kali.sh            # upgrade installer (run ON the Kali box with a bundle)
 ├── start.sh                     # service start/stop/status/logs helper
-├── .env                         # secrets — gitignored, never commit
+├── .env                         # runtime secrets — gitignored, never commit
 ├── workflows/
 │   ├── 01-full-recon-pipeline.yaml
 │   ├── 02-js-secrets-recon.yaml

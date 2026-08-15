@@ -1,5 +1,6 @@
 # Secrets
 .env
+install-secrets.env
 
 # Run outputs & DB
 runs/*
