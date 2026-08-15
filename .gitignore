@@ -12,7 +12,8 @@ stdout
 
 # Reports
 reports/
-install.sh
+# install.sh is safe to commit since 2026-08-15: all secrets moved to
+# install-secrets.env (still gitignored below in the Secrets section).
 # Python
 __pycache__/
 *.pyc
