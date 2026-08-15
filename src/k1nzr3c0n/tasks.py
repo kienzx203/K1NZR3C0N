@@ -47,6 +47,10 @@ celery_app.conf.update(
             "task": "k1nzr3c0n.check_tool_versions",
             "schedule": crontab(hour=4, minute=0),  # daily at 4 AM
         },
+        "update-nuclei-templates": {
+            "task": "k1nzr3c0n.update_nuclei_templates",
+            "schedule": crontab(hour=4, minute=30),  # daily at 4:30 AM
+        },
         "scheduler-tick": {
             "task": "k1nzr3c0n.scheduler_tick",
             "schedule": crontab(minute="*"),  # continuous-recon schedules
@@ -118,6 +122,21 @@ _STATUS_MAP = {
     "FAIL": "failed",
     "SKIP": "skipped",
 }
+
+# Steps whose DONE should trigger an incremental findings re-parse so the
+# Inventory / Findings pages update WHILE the run is still going (not only at
+# completion). Only pre-vuln steps are listed: parse_findings also calls
+# alert_critical_findings, and we must not fire critical/high webhooks before
+# the vuln-scan steps have actually run. parse_findings is idempotent
+# (delete-then-insert per run), so re-parsing is safe.
+_INCREMENTAL_PARSE_STEPS = frozenset({
+    "httpx",                 # live web hosts → inventory rows
+    "httpx_probe",           # workflows 02/03 variant of the httpx step
+    "screenshot",            # attaches screenshots to http findings
+    "pivot_httpx_probe",     # flow-1 pivot hosts appended to httpx.jsonl
+    "st_pivot_screenshot",   # flow-2 (ST pivot) screenshots
+    "naabu_topscan",         # open ports → Findings tab
+})
 
 _BATCH_SIZE = 20     # flush log buffer to DB every N lines
 _BATCH_SECS = 1.0    # or every N seconds
@@ -724,6 +743,10 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
                 _update_steps(db, run, steps)
                 if changed_status:
                     _publish(run_id, {"type": "step", "steps": steps})
+                # Live Inventory sync: when a producer step finishes, re-parse
+                # findings so /inventory updates while the run is in flight.
+                if m.group(1) == "DONE" and m.group(2) in _INCREMENTAL_PARSE_STEPS:
+                    parse_findings.delay(run_id)
                 # markers are machine-readable only — don't save to log DB or broadcast
                 return
 
@@ -781,6 +804,9 @@ def execute_run(self, run_id: str, cmd: list[str]) -> dict:
                 "steps": steps,
                 "elapsed_s": round(elapsed_s, 1),
             })
+            # Parse whatever outputs already landed — a run cancelled after the
+            # scan phases still holds valid findings/screenshots for Inventory.
+            parse_findings.delay(run_id)
             return {"status": "cancelled", "elapsed_s": round(elapsed_s, 1)}
 
         paused = proc.returncode == _PAUSE_EXIT_CODE
@@ -1008,6 +1034,33 @@ def check_tool_versions() -> dict:
         return {"checked": len(results)}
     finally:
         db.close()
+
+
+@celery_app.task(name="k1nzr3c0n.update_nuclei_templates")
+def update_nuclei_templates() -> dict:
+    """Refresh nuclei templates daily (04:30) so scans always run with the
+    newest CVE/misconfig coverage. Runs ahead of any scheduled recon so runs
+    never pay the download cost mid-scan. `nuclei -ut` updates the default
+    templates dir (/root/nuclei-templates when the worker runs as root)."""
+    import subprocess
+    from pathlib import Path
+
+    tpl_dir = Path("/root/nuclei-templates")
+    before = sum(1 for _ in tpl_dir.rglob("*.yaml")) if tpl_dir.exists() else 0
+    try:
+        proc = subprocess.run(
+            ["nuclei", "-ut"],
+            capture_output=True, text=True, timeout=1800,
+        )
+        after = sum(1 for _ in tpl_dir.rglob("*.yaml")) if tpl_dir.exists() else 0
+        return {
+            "returncode": proc.returncode,
+            "templates_before": before,
+            "templates_after": after,
+            "tail": (proc.stdout or "")[-300:],
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 @celery_app.task(name="k1nzr3c0n.update_tool_task")

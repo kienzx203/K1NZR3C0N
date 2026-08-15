@@ -97,6 +97,134 @@ const VERDICT_META = {
   https_broken:{ label: 'HTTPS BROKEN',  color: 'var(--amber)' },
 }
 
+function fmtBytes(b) {
+  if (b == null) return '?'
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']
+  let i = 0, v = b
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${u[i]}`
+}
+
+function DangerZone() {
+  const [usage, setUsage] = useState(null)
+  const [modal, setModal] = useState(null)     // null | 'runs' | 'all'
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  const load = useCallback(() => api.getSystemUsage().then(setUsage).catch(() => {}), [])
+  useEffect(() => { load() }, [load])
+
+  function open(scope) { setModal(scope); setTyped(''); setError(''); setResult(null) }
+  function close() { if (!busy) setModal(null) }
+
+  async function doReset() {
+    setBusy(true)
+    setError('')
+    try {
+      setResult(await api.resetSystem(modal, typed))
+      setModal(null)
+      load()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const isAll = modal === 'all'
+  // Rows actually deleted by the chosen scope (api_keys are never wiped)
+  const totalRows = usage
+    ? usage.runs + usage.findings + usage.new_assets + usage.run_logs +
+      (isAll ? usage.targets + usage.schedules : 0)
+    : 0
+
+  return (
+    <div className="card p-4" style={{ borderColor: 'rgba(248,81,73,.4)' }}>
+      <div className="section-title" style={{ color: 'var(--red)' }}>Danger zone</div>
+      <p className="text-[var(--text-2)] text-xs mt-1 mb-3">
+        Permanently delete data. This cannot be undone. Active runs must be cancelled first.
+        {' '}<b>API keys, tools and templates (workflows + nuclei) are never deleted.</b>
+      </p>
+      {usage && (
+        <p className="text-[11px] font-mono text-[var(--text-2)] mb-3">
+          {usage.runs} runs · {usage.findings} findings · {usage.workspace_dirs} workspaces ({fmtBytes(usage.workspace_bytes)})
+          {' · '}always kept: {usage.api_keys} keys, {usage.tool_versions} tools, {usage.targets} targets, {usage.schedules} schedules
+        </p>
+      )}
+      {result && (
+        <div className="rounded border border-[rgba(63,185,80,.35)] bg-[rgba(63,185,80,.07)] px-3 py-2 text-[11px] font-mono mb-3" style={{ color: 'var(--green)' }}>
+          ✓ Reset done ({result.scope}): {Object.entries(result.deleted_rows).filter(([, n]) => n > 0).map(([t, n]) => `${n} ${t}`).join(', ') || 'no rows'}
+          {' · '}{result.removed_workspace_dirs} workspaces removed · {fmtBytes(result.freed_bytes)} freed
+        </div>
+      )}
+      <div className="flex gap-2 flex-wrap">
+        <button
+          onClick={() => open('runs')}
+          className="px-3 py-1.5 rounded text-xs border transition-colors"
+          style={{ borderColor: 'rgba(248,81,73,.5)', color: 'var(--red)' }}
+        >
+          Wipe run data + workspaces
+        </button>
+        <button
+          onClick={() => open('all')}
+          className="px-3 py-1.5 rounded text-xs transition-colors text-white"
+          style={{ background: '#da3633' }}
+        >
+          Factory reset (all data, keep keys)
+        </button>
+      </div>
+
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={close}>
+          <div className="card p-5 w-[440px] max-w-[92vw]" onClick={e => e.stopPropagation()}
+               style={{ borderColor: 'rgba(248,81,73,.5)' }}>
+            <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--red)' }}>
+              {isAll ? 'Factory reset — wipe all data (keys + tools kept)' : 'Wipe run data + workspaces'}
+            </h3>
+            <p className="text-xs text-[var(--text-2)] mb-3">
+              {isAll
+                ? <>Deletes <b>all data tables</b> — {totalRows} rows including <b>{usage?.targets} targets and {usage?.schedules} schedules</b> — and removes all {usage?.workspace_dirs} workspaces ({fmtBytes(usage?.workspace_bytes)}). <b>API keys, tools and templates are kept.</b></>
+                : <>Deletes all run history ({totalRows} rows: runs, logs, findings, new assets) and removes all {usage?.workspace_dirs} workspaces ({fmtBytes(usage?.workspace_bytes)}). <b>API keys, tools, targets, schedules and templates are kept.</b></>}
+            </p>
+            {error && (
+              <div className="rounded border border-[rgba(248,81,73,.4)] bg-[rgba(248,81,73,.08)] px-3 py-2 text-[11px] mb-3" style={{ color: 'var(--red)' }}>
+                {error}
+              </div>
+            )}
+            <label className="text-[11px] text-[var(--text-2)] block mb-1">
+              Type <code className="font-mono px-1 rounded bg-[var(--surface)]">RESET</code> to confirm
+            </label>
+            <input
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              placeholder="RESET"
+              autoFocus
+              className="w-full px-3 py-1.5 rounded border border-[var(--border)] bg-[var(--surface)] text-sm font-mono mb-4 outline-none focus:border-[var(--text-3)]"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={close} disabled={busy}
+                      className="px-3 py-1.5 rounded text-xs border border-[var(--border)] text-[var(--text-2)] hover:text-[var(--text)] disabled:opacity-40">
+                Cancel
+              </button>
+              <button
+                onClick={doReset}
+                disabled={busy || typed !== 'RESET'}
+                className="px-3 py-1.5 rounded text-xs text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ background: '#da3633' }}
+              >
+                {busy ? 'Deleting…' : isAll ? 'Delete everything' : 'Delete run data'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function NetworkPanel() {
   const [state, setState] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -379,6 +507,9 @@ export default function Tools() {
 
       {/* System health */}
       <HealthPanel />
+
+      {/* Reset DB + wipe run workspaces */}
+      <DangerZone />
 
       {/* Warning banner */}
       <div className="rounded border border-[#f0883e33] bg-[#f0883e0d] px-4 py-2.5 text-xs text-[#f0883e]">

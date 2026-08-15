@@ -136,6 +136,10 @@ export const api = {
   getEnvStatus: () => req('GET', '/keys/env-status'),
   setKey:       (provider, value) => req('PUT', `/keys/${provider}`, { value }),
   deleteKey:    (provider) => req('DELETE', `/keys/${provider}`),
+
+  // System (danger zone: reset DB + wipe run workspaces)
+  getSystemUsage: () => req('GET', '/system/usage'),
+  resetSystem:    (scope, confirm) => req('POST', '/system/reset', { scope, confirm }),
 }
 
 export function wsUrl(runId) {

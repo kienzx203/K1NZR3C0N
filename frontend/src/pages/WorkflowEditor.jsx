@@ -654,6 +654,11 @@ const VAR_DOCS = {
     detail: 'Captures a screenshot of each live HTTP host. Useful for quick visual triage of large scopes. Slow on large target sets.',
     type: 'bool', risk: 'safe',
   },
+  run_st_pivot_scan: {
+    desc: '⚠️ Flow 2: scan SecurityTrails pivot domains (scope-sensitive)',
+    detail: 'OFF by default. When enabled, a SEPARATE flow scans the root domains in st_pivot_domains.txt (other orgs sharing NS/MX with the target): naabu port scan (passive + 100 web ports) → httpx probe on every live port → screenshots merged into the gallery. Those domains may belong to third parties (shared hosting/CDN customers) — enable ONLY when your program scope covers org-wide assets. Flow 2 is isolated: no crawl, no vuln scan (nuclei/afrog/katana) touches those domains.',
+    type: 'bool', risk: 'noisy',
+  },
   run_dirbrute: {
     desc: 'Enable directory/file brute-forcing (Feroxbuster, Dirsearch, FFUF)',
     detail: 'Actively brute-forces paths on each live host. Very noisy — generates a large volume of 404s and is easy to detect in WAF logs. Only enable on targets with explicit pentest scope.',
@@ -2752,7 +2757,7 @@ function VarsPanel({ vars, onChange }) {
       'run_passive','run_waymore','run_asn',
       'run_permutation','run_tlsx',
       'run_portscan','run_asn_portscan','run_deep_portscan',
-      'run_screenshot','run_cdncheck','run_crawl',
+      'run_screenshot','run_st_pivot_scan','run_cdncheck','run_crawl',
       'run_js_analysis','run_takeover','run_s3scan',
       'run_nuclei','run_afrog',
       'run_discovery','run_deep_scan','run_vhost','run_params','run_dirbrute',

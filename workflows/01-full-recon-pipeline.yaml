@@ -15,6 +15,13 @@ vars:
   run_asn_portscan: 'true'
   run_deep_portscan: 'true'
   run_screenshot: 'true'
+  # SCOPE-SENSITIVE (default OFF): also scan SecurityTrails pivot domains —
+  # OTHER orgs' root domains sharing NS/MX with the target. Enable ONLY when
+  # your program scope covers org-wide assets; shared NS/MX can include
+  # third parties (hosting customers, providers). Runs as a SEPARATE flow 2:
+  # own httpx probe + own screenshot pass merged into the gallery. It never
+  # touches live_urls.txt, so katana/afrog/nuclei NEVER hit those domains.
+  run_st_pivot_scan: 'false'
   run_cdncheck: 'true'
   run_crawl: 'true'
   run_js_analysis: 'true'
@@ -49,6 +56,14 @@ vars:
   perm_output_limit: '5000'    # cap dnsgen output before resolving (prevents timeout on large wordlists)
   naabu_rate: '500'            # reduced from 1500 — stable port scan on VMware NAT
   naabu_top_ports: '1000'
+  # SINGLE SOURCE OF TRUTH for web/app ports — used by naabu_topscan +
+  # st_pivot_naabu active scans, extract_web_targets (httpx input filter) and
+  # nuclei_naabu_ports (web ports excluded there, covered by network templates).
+  web_ports: '80,81,443,591,593,832,981,1010,1311,2052,2053,2077,2079,2082,2083,2086,2087,2089,2095,2096,2375,2376,2379,2380,2480,3000,3001,3128,3333,3443,4243,4433,4443,4567,4711,4712,4848,4993,5000,5001,5104,5108,5601,5800,6443,6543,7000,7001,7002,7396,7443,7474,7990,8000,8001,8006,8008,8014,8042,8069,8080,8081,8083,8086,8088,8090,8091,8118,8123,8172,8181,8222,8243,8280,8281,8333,8443,8500,8834,8880,8888,8983,9000,9043,9060,9080,9090,9091,9093,9200,9443,9800,9981,9990,10000,10250,10255,11371,12443,15672,16080,18091,18092,20720,28017'
+  # Shared-hosting guard: one cPanel box can expose 40+ live HTTP ports
+  # (observed: affiliate.viettelidc.com.vn) — each becomes a screenshot +
+  # crawl + nuclei target and floods every downstream phase. Cap per host.
+  max_ports_per_host: '20'
   rustscan_batch: '2000'       # reduced from 5000
   rustscan_timeout_ms: '3000'  # increased from 2000 — give NAT more time per connection
   nmap_flags: -sV -sC -Pn --open -T4 --max-retries 2
@@ -921,6 +936,30 @@ steps:
   outputs:
     file: '{workspace}/st_pivot_domains.txt'
 
+- id: st_intel_mine
+  name: '[intel] mine SecurityTrails intel (SSL cert SANs + historical DNS) for missed subs'
+  depends_on:
+  - st_intel_retry
+  run_on_failed_deps: true
+  shell: true
+  optional: true
+  timeout: 2m
+  # st_subdomains already feeds merge_passive, but the REST of the ST intel
+  # can hold hostnames the subdomain endpoint missed — historical cert SANs
+  # (e.g. owa.* found via st_ssl.json on viettelidc) and old DNS record
+  # values. Zero network calls: pure local parse, scope-filtered to {target}.
+  # Runs AFTER st_intel_retry so topped-up sections are included too; feeds
+  # merge_all_subdomains (NOT merge_passive, which runs before the retry).
+  # NOTE: st_pivot_domains/st_associated are deliberately NOT mined — those
+  # are other orgs' root domains and merging them would break scope.
+  run: |
+    python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/st_intel_mine.py \
+      {workspace} {target} 2>/dev/null || true
+    touch {workspace}/st_intel_subs.txt
+    printf 'ST intel mined subs: %s\n' "$(wc -l < {workspace}/st_intel_subs.txt)"
+  outputs:
+    file: '{workspace}/st_intel_subs.txt'
+
 - id: recursive_enum
   name: '[passive] recursive subfinder — enumerate sub-subdomains of wildcard/broad hosts'
   depends_on:
@@ -1105,9 +1144,10 @@ steps:
       file: '{workspace}/perm_gotator.txt'
     optional: true
 - id: merge_all_subdomains
-  name: merge passive + permutation + revdns + recursive + amass intel → final candidate list
+  name: merge passive + permutation + revdns + recursive + amass intel + ST intel → final candidate list
   depends_on:
   - permutation_dns
+  - st_intel_mine
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -1118,6 +1158,7 @@ steps:
       cat {workspace}/passive_merged.txt      2>/dev/null || true
       cat {workspace}/p_recursive.txt         2>/dev/null || true
       cat {workspace}/amass_intel.txt         2>/dev/null || true
+      cat {workspace}/st_intel_subs.txt       2>/dev/null || true
       cat \
         {workspace}/perm_dnsgen.txt \
         {workspace}/perm_alterx.txt \
@@ -1550,12 +1591,23 @@ steps:
   skip_if_exists: true
   timeout: 20m
   run: |
-    test -s {workspace}/subdomains_resolved.txt && tlsx -l {workspace}/subdomains_resolved.txt \
+    # Input: resolved hosts (wildcard mode). In no-wildcard mode that file is
+    # empty (mass resolve was skipped) → fall back to the candidate list, else
+    # TLS-SAN discovery would be silently skipped for MOST targets (capped:
+    # handshakes on dead hosts cost time; 5000 is plenty for SAN mining).
+    TLSX_INPUT={workspace}/subdomains_resolved.txt
+    if ! test -s "$TLSX_INPUT"; then
+      head -5000 {workspace}/subdomains_all.txt > {workspace}/.tlsx_candidates 2>/dev/null || true
+      TLSX_INPUT={workspace}/.tlsx_candidates
+    fi
+    test -s "$TLSX_INPUT" && tlsx -l "$TLSX_INPUT" \
       -san -cn -silent \
       -p 443,8443,4443 \
       -timeout 5 \
       -o {workspace}/tlsx_raw.txt 2>/dev/null || true
+    rm -f {workspace}/.tlsx_candidates
     touch {workspace}/tlsx_raw.txt
+    printf 'tlsx SAN mining input: %s hosts\n' "$(wc -l < "$TLSX_INPUT" 2>/dev/null || echo 0)"
   outputs:
     file: '{workspace}/tlsx_raw.txt'
 - id: tlsx_san_extract
@@ -1662,13 +1714,14 @@ steps:
     printf '[naabu] passive (Shodan): %s port records\n' "$(wc -l < {workspace}/naabu.jsonl)"
     # Phase 2: active CONNECT scan on common web/app ports (reliable on VMware NAT)
     # Avoids -top-ports N which is slow; targets ports most likely to be
-    # HTTP/app servers. 100 ports: web basics + cPanel (2082/2083/2087/2089),
-    # Docker/etcd (2375/2376/2379/2380), Kubernetes (6443/10250/10255),
-    # WebLogic (7001/7002), vCenter/UniFi (7443), Proxmox (8006), Kibana (5601),
-    # Synology (5001), RabbitMQ-mgmt (15672), alt-HTTPS (3443/4433/4443),
-    # InfluxDB (8086), WildFly (9990), GlassFish (4848), Bitbucket (7990).
+    # HTTP/app servers. Port list lives in {vars.web_ports}: web basics +
+    # cPanel (2082/2083/2087/2089), Docker/etcd (2375/2376/2379/2380),
+    # Kubernetes (6443/10250/10255), WebLogic (7001/7002), vCenter/UniFi
+    # (7443), Proxmox (8006), Kibana (5601), Synology (5001),
+    # RabbitMQ-mgmt (15672), alt-HTTPS (3443/4433/4443), InfluxDB (8086),
+    # WildFly (9990), GlassFish (4848), Bitbucket (7990).
     naabu -list {steps.merge_all_resolved.all_resolved} \
-      -p 80,81,443,591,593,832,981,1010,1311,2082,2083,2087,2089,2095,2096,2375,2376,2379,2380,2480,3000,3001,3128,3333,3443,4243,4433,4443,4567,4711,4712,4848,4993,5000,5001,5104,5108,5601,5800,6443,6543,7000,7001,7002,7396,7443,7474,7990,8000,8001,8006,8008,8014,8042,8069,8080,8081,8083,8086,8088,8090,8091,8118,8123,8172,8181,8222,8243,8280,8281,8333,8443,8500,8834,8880,8888,8983,9000,9043,9060,9080,9090,9091,9093,9200,9443,9800,9981,9990,10000,10250,10255,11371,12443,15672,16080,18091,18092,20720,28017 \
+      -p {vars.web_ports} \
       -rate {vars.naabu_rate} -json -silent -r {vars.dns_resolvers} 2>/dev/null >> {workspace}/naabu.jsonl || true
     printf '[naabu] total port records (passive+active): %s\n' "$(wc -l < {workspace}/naabu.jsonl)"
   outputs:
@@ -1737,7 +1790,15 @@ steps:
         printf '%s\n' {target} > {workspace}/rustscan_hosts.txt
         INPUT={workspace}/rustscan_hosts.txt
       fi
-      printf 'rustscan: %s hosts — full port range (chunked)\n' "$(wc -l < "$INPUT")"
+      # Dedup by IP: shared hosting stacks many hostnames on one IP (observed
+      # 718 hosts → 167 unique IPs on viettelidc). Scanning hostnames rescans
+      # the same IP over and over; resolve to unique IPs first (DoH, NAT-safe)
+      # and scan those. Reused by nmap_service below.
+      dnsx -l "$INPUT" -a -resp-only -silent \
+        -r {vars.doh_resolvers} -t {vars.doh_threads} 2>/dev/null \
+        | sort -u > {workspace}/.deep_ips || true
+      test -s {workspace}/.deep_ips && INPUT={workspace}/.deep_ips
+      printf 'rustscan: %s unique IPs — full port range (chunked)\n' "$(wc -l < "$INPUT")"
       rm -f {workspace}/rustscan_full.txt
       # rustscan -a expects a COMMA-SEPARATED host list, NOT a file path —
       # passing a file makes it resolve the path as a hostname and scan nothing.
@@ -1766,20 +1827,26 @@ steps:
   - id: nmap_service
     shell: true
     run: |
-      # Same origin-first input priority as rustscan_full
-      if test -s {workspace}/origin_hosts.txt; then
+      # Reuse the deduped unique-IP list rustscan_full built (fanout is
+      # sequential, so it exists by now). Fallback to the origin-first
+      # selection if rustscan_full never produced it.
+      if test -s {workspace}/.deep_ips; then
+        NINPUT={workspace}/.deep_ips
+      elif test -s {workspace}/origin_hosts.txt; then
         NINPUT={workspace}/origin_hosts.txt
       elif test -s {workspace}/subdomains_all_resolved.txt; then
         NINPUT={workspace}/subdomains_all_resolved.txt
       else
         NINPUT=""
       fi
+      printf 'nmap_service: %s targets\n' "$(test -n "$NINPUT" && wc -l < "$NINPUT" || echo 0)"
       test -n "$NINPUT" && nmap {vars.nmap_flags} -iL "$NINPUT" -oN {workspace}/nmap_service.txt 2>/dev/null; touch {workspace}/nmap_service.txt
+      rm -f {workspace}/.deep_ips
     outputs:
       file: '{workspace}/nmap_service.txt'
     optional: true
 - id: extract_web_targets
-  name: extract web targets — resolved hosts + EVERY live port as host:port
+  name: extract web targets — resolved hosts + live WEB ports as host:port
   depends_on:
   - merge_all_resolved
   - naabu_asn_scan
@@ -1792,22 +1859,34 @@ steps:
   run: |
     # Flow: naabu live ports → combine with their host as host:port → httpx
     # probes each domain:port (httpx accepts host:port / ip:port natively).
-    # No 10-port whitelist: naabu_topscan only scans web ports, so every
-    # record in naabu.jsonl is an HTTP candidate. This is what makes the
-    # screenshot/vuln chain cover ALL live web services, not just 80/443/8080.
+    # Filters applied to the host:port half:
+    #   1. WEB PORTS ONLY — naabu.jsonl also holds Shodan-passive records for
+    #      mail/FTP/DNS etc. (465/993/21/53… observed ~25% of records); those
+    #      are not HTTP and belong to nuclei_naabu_ports' network templates.
+    #   2. DROP :80/:443 — bare hosts below already probe default 80/443.
+    #   3. PER-HOST CAP — one shared-hosting box can expose 40+ live HTTP
+    #      ports; each becomes a screenshot+crawl+nuclei target downstream.
     (
-      # Resolved subdomains (bare) — httpx probes these on default 80/443 as
-      # a safety net in case naabu missed a port (rate-limit / NAT flap).
       cat {workspace}/subdomains_all_resolved.txt 2>/dev/null || true
-      # All live ports on domains → domain:port
       if test -f {workspace}/naabu.jsonl; then
         jq -r 'select(.port) | "\(.host // .ip):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null || true
       fi
-      # All live ports on ASN-range IPs → ip:port
       if test -f {workspace}/naabu_asn.jsonl; then
         jq -r 'select(.port) | "\(.host // .ip):\(.port)"' {workspace}/naabu_asn.jsonl 2>/dev/null || true
       fi
+    ) | sort -u > {workspace}/.web_targets_raw
+    WEB_PORTS_RE=$(printf '%s' "{vars.web_ports}" | tr ',' '|')
+    (
+      # Bare hosts (httpx probes default 80/443 — safety net if naabu missed)
+      grep -vE ':[0-9]+$' {workspace}/.web_targets_raw 2>/dev/null || true
+      # host:port entries: web ports only, no :80/:443 dupes, capped per host
+      grep -E ':[0-9]+$' {workspace}/.web_targets_raw 2>/dev/null \
+        | grep -E ":($WEB_PORTS_RE)$" \
+        | grep -vE ':(80|443)$' \
+        | sort -t: -k1,1 -k2,2n \
+        | awk -F: -v n={vars.max_ports_per_host} 'c[$1]++ < n' || true
     ) | sort -u > {workspace}/web_targets.txt
+    rm -f {workspace}/.web_targets_raw
     # Fallback: if nothing resolved, always probe the root target itself
     if ! test -s {workspace}/web_targets.txt; then
       printf '%s\nwww.%s\n' '{target}' '{target}' > {workspace}/web_targets.txt
@@ -2084,9 +2163,10 @@ steps:
     in_scope: '{workspace}/ip_pivot_in_scope.txt'
     neighbors: '{workspace}/ip_pivot_neighbors.txt'
 - id: pivot_new_hosts_merge
-  name: merge all pivot-discovered hosts (favicon + vhost + ip_pivot) → resolve new ones
+  name: merge all pivot-discovered hosts (favicon + vhost + ip_pivot + redirect-mine) → resolve new ones
   depends_on:
   - ip_pivot_filter
+  - http_redirect_subs
   run_on_failed_deps: true
   timeout: 5m
   shell: true
@@ -2095,6 +2175,7 @@ steps:
       cat {workspace}/favicon_in_scope.txt 2>/dev/null || true
       cat {workspace}/vhost_new_hosts.txt  2>/dev/null || true
       cat {workspace}/ip_pivot_in_scope.txt 2>/dev/null || true
+      cat {workspace}/http_redirect_resolved.txt 2>/dev/null || true
     ) | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
       | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/pivot_new_candidates.txt
@@ -2119,11 +2200,39 @@ steps:
     touch {workspace}/pivot_new_resolved.txt
     NEW_COUNT=$(wc -l < {workspace}/pivot_new_resolved.txt)
     printf 'Pivot resolved: %s new hosts beyond main enumeration\n' "$NEW_COUNT"
-    if [ "$NEW_COUNT" -gt 0 ]; then
-      printf '→ Recommend: probe with httpx -l pivot_new_resolved.txt\n'
-    fi
   outputs:
     file: '{workspace}/pivot_new_resolved.txt'
+- id: pivot_httpx_probe
+  name: probe pivot-discovered hosts → merge into httpx.jsonl + live_urls (feeds screenshot/crawl/nuclei)
+  depends_on:
+  - pivot_dnsx_resolve
+  run_on_failed_deps: true
+  shell: true
+  optional: true
+  timeout: 30m
+  # Without this step pivot-discovered hosts were dead ends (only counted in
+  # the report). These hosts are in-scope target subdomains (scope-filtered by
+  # pivot_new_hosts_merge), so full treatment is intended: appending to
+  # httpx.jsonl feeds nuclei_hosts + report; appending to live_urls.txt feeds
+  # screenshot + crawl + afrog.
+  run: |
+    touch {workspace}/pivot_httpx_probe.jsonl
+    test -s {workspace}/pivot_new_resolved.txt || exit 0
+    httpx -l {workspace}/pivot_new_resolved.txt \
+      -silent -json -o {workspace}/pivot_httpx_probe.jsonl \
+      -td -title -status-code -content-length -cname \
+      -follow-redirects -retries 2 \
+      -timeout {vars.httpx_timeout} \
+      -threads {vars.httpx_threads} \
+      -random-agent 2>{workspace}/pivot_httpx_stderr.log || true
+    cat {workspace}/pivot_httpx_probe.jsonl >> {workspace}/httpx.jsonl 2>/dev/null || true
+    jq -r '.url // empty' {workspace}/pivot_httpx_probe.jsonl 2>/dev/null \
+      | sort -u >> {workspace}/live_urls.txt || true
+    sort -u {workspace}/live_urls.txt -o {workspace}/live_urls.txt
+    printf 'Pivot probe: %s pivot hosts live — merged into httpx.jsonl + live_urls\n' \
+      "$(wc -l < {workspace}/pivot_httpx_probe.jsonl)"
+  outputs:
+    probe_jsonl: '{workspace}/pivot_httpx_probe.jsonl'
 - id: http_redirect_subs
   name: mine HTTP redirect Location headers for new in-scope subdomains
   depends_on:
@@ -2176,10 +2285,18 @@ steps:
       -i {workspace}/subdomains_all_resolved.txt \
       -jsonl -o {workspace}/cdncheck.jsonl 2>/dev/null || true
     touch {workspace}/cdncheck.jsonl
-    jq -r 'select(.cdn != true and .waf != true and .cloud != true) | .input' \
-      {workspace}/cdncheck.jsonl 2>/dev/null | sort -u > {workspace}/origin_hosts.txt || true
+    # cdncheck emits ONLY detected CDN/WAF/cloud hosts (positives-only) — the
+    # old jq select(non-positive) over that output was ALWAYS empty, so
+    # origin_hosts.txt came out empty every run: deep_portscan scanned CDN
+    # edges too and vhost fuzz lost its IP base. Origin = all resolved MINUS
+    # the detected set.
+    jq -r '.input // empty' {workspace}/cdncheck.jsonl 2>/dev/null \
+      | sort -u > {workspace}/.cdn_detected || true
+    comm -23 <(sort -u {workspace}/subdomains_all_resolved.txt 2>/dev/null) \
+      {workspace}/.cdn_detected > {workspace}/origin_hosts.txt 2>/dev/null || true
+    rm -f {workspace}/.cdn_detected
     touch {workspace}/origin_hosts.txt
-    CDN_COUNT=$(jq -r 'select(.cdn==true or .waf==true or .cloud==true) | .input' {workspace}/cdncheck.jsonl 2>/dev/null | wc -l || echo 0)
+    CDN_COUNT=$(jq -r '.input // empty' {workspace}/cdncheck.jsonl 2>/dev/null | sort -u | wc -l || echo 0)
     ORIGIN_COUNT=$(wc -l < {workspace}/origin_hosts.txt 2>/dev/null || echo 0)
     printf 'CDN hosts: %s | Origin (non-CDN) hosts: %s\n' "$CDN_COUNT" "$ORIGIN_COUNT" >> {workspace}/resolve_stats.txt || true
   outputs:
@@ -2208,7 +2325,7 @@ steps:
 - id: screenshot
   name: headless screenshots — gowitness (all live HTTP endpoints)
   depends_on:
-  - pivot_dnsx_resolve
+  - pivot_httpx_probe
   run_on_failed_deps: true
   timeout: 30m
   when: '{vars.run_screenshot}'
@@ -2232,6 +2349,107 @@ steps:
   outputs:
     screenshot_dir: '{workspace}/screenshots'
     gallery_zip: '{workspace}/gowitness-report.zip'
+- id: st_pivot_naabu
+  name: '[ST-pivot] flow 2 — naabu port scan pivot domains (opt-in)'
+  depends_on:
+  - extract_live_urls
+  run_on_failed_deps: true
+  when: '{vars.run_st_pivot_scan}'
+  shell: true
+  optional: true
+  timeout: 90m
+  # ⚠️ SCOPE WARNING: st_pivot_domains.txt holds OTHER orgs' ROOT domains
+  # sharing NS/MX with the target — shared hosting/CDN can make some of them
+  # third parties. Opt-in only (run_st_pivot_scan). Mirrors the main
+  # naabu_topscan: Shodan internetdb passive + active scan of the same 100
+  # web/app ports. Deliberately ISOLATED from the main chain: own files only;
+  # katana/afrog/nuclei NEVER see these hosts.
+  run: |
+    touch {workspace}/st_pivot_naabu.jsonl {workspace}/st_pivot_scan_list.txt
+    test -s {workspace}/st_pivot_domains.txt || exit 0
+    # Drop the target itself (already fully covered by flow 1)
+    grep -v -x '{target}' {workspace}/st_pivot_domains.txt 2>/dev/null \
+      | tr '[:upper:]' '[:lower:]' | sort -u > {workspace}/st_pivot_scan_list.txt
+    COUNT=$(wc -l < {workspace}/st_pivot_scan_list.txt)
+    printf '[st_pivot] flow 2: scanning %s pivot domains (passive + 100 web ports)\n' "$COUNT"
+    [ "$COUNT" -eq 0 ] && exit 0
+    # Phase 1: Shodan internetdb passive (free, keyless)
+    naabu -list {workspace}/st_pivot_scan_list.txt -passive \
+      -json -silent 2>/dev/null >> {workspace}/st_pivot_naabu.jsonl || true
+    # Phase 2: active CONNECT scan — same web/app ports as naabu_topscan
+    naabu -list {workspace}/st_pivot_scan_list.txt \
+      -p {vars.web_ports} \
+      -rate {vars.naabu_rate} -json -silent -r {vars.dns_resolvers} 2>/dev/null >> {workspace}/st_pivot_naabu.jsonl || true
+    printf '[st_pivot] naabu port records: %s\n' "$(wc -l < {workspace}/st_pivot_naabu.jsonl)"
+  outputs:
+    pivot_naabu: '{workspace}/st_pivot_naabu.jsonl'
+    pivot_scan_list: '{workspace}/st_pivot_scan_list.txt'
+- id: st_pivot_httpx
+  name: '[ST-pivot] flow 2 — httpx probe pivot domains + every live port (opt-in)'
+  depends_on:
+  - st_pivot_naabu
+  run_on_failed_deps: true
+  when: '{vars.run_st_pivot_scan}'
+  shell: true
+  optional: true
+  timeout: 60m
+  run: |
+    touch {workspace}/st_pivot_httpx.jsonl {workspace}/st_pivot_live_urls.txt
+    test -s {workspace}/st_pivot_scan_list.txt || exit 0
+    # Bare pivot domains + every live host:port from pivot naabu — same
+    # combination pattern as flow 1's extract_web_targets.
+    (
+      cat {workspace}/st_pivot_scan_list.txt 2>/dev/null || true
+      jq -r 'select(.port) | "\(.host // .ip):\(.port)"' {workspace}/st_pivot_naabu.jsonl 2>/dev/null || true
+    ) | sort -u > {workspace}/st_pivot_web_targets.txt
+    printf '[st_pivot] flow 2: probing %s web targets\n' "$(wc -l < {workspace}/st_pivot_web_targets.txt)"
+    httpx -l {workspace}/st_pivot_web_targets.txt \
+      -silent -json -o {workspace}/st_pivot_httpx.jsonl \
+      -td -title -status-code -content-length -cname \
+      -follow-redirects -retries 2 \
+      -timeout {vars.httpx_timeout} \
+      -threads {vars.httpx_threads} \
+      -random-agent 2>{workspace}/st_pivot_httpx_stderr.log || true
+    jq -r '.url // empty' {workspace}/st_pivot_httpx.jsonl 2>/dev/null \
+      | sort -u > {workspace}/st_pivot_live_urls.txt
+    printf '[st_pivot] live pivot hosts: %s\n' "$(wc -l < {workspace}/st_pivot_live_urls.txt)"
+  outputs:
+    pivot_httpx: '{workspace}/st_pivot_httpx.jsonl'
+    pivot_web_targets: '{workspace}/st_pivot_web_targets.txt'
+    pivot_live_urls: '{workspace}/st_pivot_live_urls.txt'
+- id: st_pivot_screenshot
+  name: '[ST-pivot] flow 2 — screenshot pivot live hosts into the shared gallery'
+  depends_on:
+  - screenshot
+  - st_pivot_httpx
+  run_on_failed_deps: true
+  when: '{vars.run_st_pivot_scan}'
+  shell: true
+  optional: true
+  timeout: 2h
+  # Runs AFTER the main screenshot step → never two gowitness writers on
+  # gowitness.sqlite3 at once. Pivot shots land in the SAME screenshots/ dir
+  # + DB so the existing Screenshots tab shows flow 1 + flow 2 together
+  # (hostnames make obvious which is which — different root domains).
+  run: |
+    test -s {workspace}/st_pivot_live_urls.txt || exit 0
+    mkdir -p {workspace}/screenshots
+    gowitness scan file \
+      -f {workspace}/st_pivot_live_urls.txt \
+      -s {workspace}/screenshots \
+      --write-db \
+      --write-db-uri sqlite://{workspace}/gowitness.sqlite3 \
+      --chrome-path /usr/bin/chromium \
+      -T 30 --threads {vars.screenshot_threads} -q 2>>{workspace}/gowitness.log || true
+    cd {workspace} && gowitness report generate \
+      --db-uri sqlite://{workspace}/gowitness.sqlite3 \
+      --screenshot-path {workspace}/screenshots \
+      --zip-name {workspace}/gowitness-report.zip \
+      -q 2>/dev/null || true
+    printf '[st_pivot] gallery now has %s screenshots (flow 1 + flow 2)\n' \
+      "$(ls {workspace}/screenshots 2>/dev/null | wc -l)"
+  outputs:
+    screenshot_dir: '{workspace}/screenshots'
 - id: url_collect
   name: URL collection — katana JS-aware crawl + hakrawler (parallel; gau/wayback already ran in passive phase)
   depends_on:
@@ -2522,8 +2740,12 @@ steps:
   run: |
     touch {workspace}/naabu_nonweb_targets.txt {workspace}/nuclei_ports.jsonl
     test -f {workspace}/naabu.jsonl || exit 0
+    # Everything naabu found MINUS web ports (those already went through
+    # httpx/screenshot/nuclei_hosts) — leaves mail/FTP/SSH/DB/etc for
+    # network templates. Same web_ports source as extract_web_targets.
+    NONWEB_RE=$(printf '%s' "{vars.web_ports}" | tr ',' '|')
     jq -r '"\(.host // .ip):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null \
-      | grep -vE ':(80|443|8080|8443|8888)$' | sort -u > {workspace}/naabu_nonweb_targets.txt
+      | grep -vE ":($NONWEB_RE)$" | sort -u > {workspace}/naabu_nonweb_targets.txt
     test -s {workspace}/naabu_nonweb_targets.txt && nuclei \
       -l {workspace}/naabu_nonweb_targets.txt \
       -nmhe -jsonl -silent \
