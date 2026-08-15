@@ -361,17 +361,23 @@ export default function RunDetail() {
         })}
       </div>
 
-      {/* Content */}
+      {/* Content — Logs/Findings/Screenshots manage their own inner scroll;
+          the rest get a page-level scroll container (was overflow-hidden →
+          long content unreachable). */}
       <div className="flex-1 overflow-hidden">
         {tab === 'Logs' && (
           <LogViewer logs={logs} running={isActive} runId={id} totalLogs={totalLogs} />
         )}
         {tab === 'Findings' && <FindingsPanel runId={id} />}
         {tab === 'Screenshots' && <ScreenshotGallery runId={id} steps={steps} />}
-        {tab === 'ST Intel' && <STIntelPanel runId={id} />}
-        {tab === 'Files' && <FileExplorer runId={id} />}
+        {tab === 'ST Intel' && (
+          <div className="h-full overflow-y-auto"><STIntelPanel runId={id} /></div>
+        )}
+        {tab === 'Files' && (
+          <div className="h-full overflow-y-auto"><FileExplorer runId={id} /></div>
+        )}
         {tab === 'Report' && (
-          <div className="p-6 space-y-4">
+          <div className="h-full overflow-y-auto"><div className="p-6 space-y-4">
             {isDone ? (
               <>
                 <p className="text-sm text-[var(--text-2)]">
@@ -401,7 +407,7 @@ export default function RunDetail() {
             ) : (
               <p className="text-sm text-[var(--text-2)]">Report is available after the run completes.</p>
             )}
-          </div>
+          </div></div>
         )}
       </div>
     </div>

@@ -41,14 +41,18 @@ vars:
   # Resolvers — trickest pre-validated list (13k resolvers) preferred; fallback = 6 hardcoded
   resolvers_file: ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/wordlists/resolvers-trickest.txt
   dns_resolvers: 1.1.1.1,8.8.8.8,1.0.0.1,8.8.4.4,9.9.9.9,208.67.222.222
-  dnsx_threads: '50'           # reduced from 200 — VMware NAT limit (~1000 concurrent UDP)
-  dnsx_retry: '3'
-  puredns_rate: '3000'         # puredns resolve rate-limit qps — 3000 safe for VMware NAT (vs unlimited default)
+  dnsx_threads: '25'           # NAT-safe: 25 threads (50 still overflowed conntrack)
+  dnsx_retry: '2'
+  puredns_rate: '300'          # NAT-safe: 300 qps over the FILTERED (live) resolver list
+  # DoH resolvers for dnsx passes: DNS-over-HTTPS rides TCP/443 — the NAT
+  # treats it like ordinary web traffic, so enrichment can never overflow
+  # the UDP conntrack table the way raw-UDP massdns/dnsx did.
+  doh_resolvers: https://1.1.1.1/dns-query,https://8.8.8.8/dns-query,https://dns.google/dns-query
   wildcard_tests: '5'          # puredns wildcard detection rounds — 5 enough (default 3, we used 10 before)
-  massdns_rate: '5000'         # reduced from 20000 — prevents VMware NAT UDP table overflow
+  massdns_rate: '1500'         # NAT-safe: 1500 qps (5000 overflowed the UDP table)
   gotator_depth: '2'
-  shuffledns_threads: '1500'   # reduced from 5000 — keeps NAT from flooding
-  perm_threads: '500'          # separate thread count for permutation resolve (fewer resolvers used)
+  shuffledns_threads: '500'    # NAT-safe (1500 flooded)
+  perm_threads: '200'          # separate thread count for permutation resolve (fewer resolvers used)
   perm_input_limit: '100'      # max subdomains fed into dnsgen/gotator (more → exponential permutations)
   perm_output_limit: '5000'    # cap dnsgen output before resolving (prevents timeout on large wordlists)
   naabu_rate: '500'            # reduced from 1500 — stable port scan on VMware NAT
@@ -1390,9 +1394,18 @@ steps:
   # 685 candidates → 56 live when ~60% of resolvers were dead). Prefilter to
   # trusted + gateway + probed-alive resolvers fixes the resolve rate.
   run: |
+    # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
+    GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+    if [ -n "$GW" ]; then
+      for _i in $(seq 1 24); do
+        timeout 3 dig +short +time=1 +tries=1 @"$GW" google.com 2>/dev/null | grep -q . && break
+        printf '[net-guard] NAT degraded — waiting 5s (%s/24)\n' "$_i"
+        sleep 5
+      done
+    fi
     python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/resolver_filter.py \
       {vars.resolvers_file} {workspace}/resolvers_filtered.txt \
-      --max-probes 600 --threads 60 || true
+      --max-probes 400 --threads 30 || true
     test -s {workspace}/resolvers_filtered.txt || \
       printf '8.8.8.8\n8.8.4.4\n1.1.1.1\n1.0.0.1\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_filtered.txt
     printf 'resolver preflight: %s alive resolvers\n' "$(wc -l < {workspace}/resolvers_filtered.txt)"
@@ -1409,6 +1422,15 @@ steps:
   retries: 1
   timeout: 30m
   run: |
+    # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
+    GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+    if [ -n "$GW" ]; then
+      for _i in $(seq 1 24); do
+        timeout 3 dig +short +time=1 +tries=1 @"$GW" google.com 2>/dev/null | grep -q . && break
+        printf '[net-guard] NAT degraded — waiting 5s (%s/24)\n' "$_i"
+        sleep 5
+      done
+    fi
     # Resolver priority: preflight-filtered (alive from THIS network) first,
     # then the raw trickest list, then hardcoded fallback.
     # (skip_if_exists removed: re-runs must re-resolve with fresh resolvers.)
@@ -1439,19 +1461,26 @@ steps:
   run_on_failed_deps: true
   timeout: 30m
   shell: true
+  optional: true
+  # optional: a NAT hiccup must NOT fail the whole run (screenshot case: run
+  # died at 47% on this step). resolve_gapfill recovers the missed hosts.
+  retries: 2
   skip_if_exists: true
-  retries: 1
   run: |
+    # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
+    GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+    if [ -n "$GW" ]; then
+      for _i in $(seq 1 24); do
+        timeout 3 dig +short +time=1 +tries=1 @"$GW" google.com 2>/dev/null | grep -q . && break
+        printf '[net-guard] NAT degraded — waiting 5s (%s/24)\n' "$_i"
+        sleep 5
+      done
+    fi
     # Pass-2 input: prefer puredns-filtered list; fallback to full candidate list
     INPUT=$(test -s {workspace}/puredns_live.txt && echo {workspace}/puredns_live.txt || echo {steps.merge_all_subdomains.subdomains_all})
-    # Resolver priority: preflight-filtered list first (alive from THIS network)
-    if test -s {workspace}/resolvers_filtered.txt; then
-      RFLAG="-r {workspace}/resolvers_filtered.txt"
-    elif test -s {vars.resolvers_file}; then
-      RFLAG="-r {vars.resolvers_file}"
-    else
-      RFLAG="-r {vars.dns_resolvers}"
-    fi
+    # DoH resolvers: DNS-over-HTTPS on TCP/443 — NAT-safe enrichment (the raw
+    # UDP variant is what historically overflowed the NAT conntrack table).
+    RFLAG="-r {vars.doh_resolvers}"
     printf 'dnsx: enriching %s hosts (threads=%s, retry=%s)...\n' "$(wc -l < $INPUT)" "{vars.dnsx_threads}" "{vars.dnsx_retry}"
     # -resp outputs "host [IP1, IP2]" format — used by ip_group_analyze later
     dnsx -l "$INPUT" -silent $RFLAG -t {vars.dnsx_threads} -retry {vars.dnsx_retry} \
@@ -1483,23 +1512,25 @@ steps:
   #            the zone's source of truth beats any public resolver cache.
   # Leftover after pass 4 = genuinely unresolvable, listed for the record.
   run: |
+    # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
+    GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+    if [ -n "$GW" ]; then
+      for _i in $(seq 1 24); do
+        timeout 3 dig +short +time=1 +tries=1 @"$GW" google.com 2>/dev/null | grep -q . && break
+        printf '[net-guard] NAT degraded — waiting 5s (%s/24)\n' "$_i"
+        sleep 5
+      done
+    fi
     CANDS={steps.merge_all_subdomains.subdomains_all}
     comm -23 <(sort -u "$CANDS" 2>/dev/null) <(sort -u {workspace}/subdomains_resolved.txt 2>/dev/null) > {workspace}/resolve_gaps.txt
     GAPS=$(wc -l < {workspace}/resolve_gaps.txt)
     printf 'gap-fill: %s candidates still unresolved after pass-1/2\n' "$GAPS"
     [ "$GAPS" -eq 0 ] && exit 0
 
-    if test -s {workspace}/resolvers_filtered.txt; then
-      RFLAG="-r {workspace}/resolvers_filtered.txt"
-    elif test -s {vars.resolvers_file}; then
-      RFLAG="-r {vars.resolvers_file}"
-    else
-      RFLAG="-r {vars.dns_resolvers}"
-    fi
-
-    # Pass 3: second engine-timing chance after a flapping pause
+    # Pass 3: second engine-timing chance after a flapping pause.
+    # DoH (TCP/443) — NAT-safe, same reason as dnsx_resolve pass-2.
     sleep 30
-    dnsx -l {workspace}/resolve_gaps.txt -silent $RFLAG -t {vars.dnsx_threads} -retry 3 \
+    dnsx -l {workspace}/resolve_gaps.txt -silent -r {vars.doh_resolvers} -t {vars.dnsx_threads} -retry 3 \
       -a -aaaa -cname -resp -o {workspace}/gap_resp_pass3.txt 2>/dev/null || true
     touch {workspace}/gap_resp_pass3.txt
     awk '{print $1}' {workspace}/gap_resp_pass3.txt | sort -u > {workspace}/gap_live_pass3.txt

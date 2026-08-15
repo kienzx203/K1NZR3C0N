@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { timeAgo } from '../utils.js'
 
@@ -97,12 +97,27 @@ function TargetDetail({ name, onChanged, onDeleted }) {
   const [scopeText, setScopeText] = useState(null)
   const [checkHost, setCheckHost] = useState('')
   const [checkResult, setCheckResult] = useState(null)
+  const [newAssets, setNewAssets] = useState(null)
+  const [launching, setLaunching] = useState(false)
   const [err, setErr] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     api.getTarget(name).then(d => { setDetail(d); setScopeText((d.scope || []).join('\n')) }).catch(e => setErr(e.message))
     api.getTargetAudit(name).then(setAudit).catch(() => {})
+    api.targetNewAssets(name).then(setNewAssets).catch(() => {})
   }, [name])
+
+  async function runNow() {
+    if (!window.confirm(`Launch 01-full-recon-pipeline against ${name} now?`)) return
+    setLaunching(true)
+    try {
+      const r = await api.createRun({ workflow: '01-full-recon-pipeline.yaml', target: name })
+      navigate(`/runs/${r.id}`)
+    } catch (e) {
+      setErr(e.message); setLaunching(false)
+    }
+  }
 
   async function saveScope() {
     setErr('')
@@ -150,8 +165,21 @@ function TargetDetail({ name, onChanged, onDeleted }) {
         </div>
         <div className="flex gap-5 mt-3 text-xs" style={{ color: 'var(--text-2)' }}>
           <span>{detail.total_runs ?? 0} runs</span>
-          <span>{detail.open_vulns ?? 0} open vulns</span>
+          <span style={{ color: (detail.open_vulns ?? 0) > 0 ? 'var(--red)' : undefined }}>
+            {detail.open_vulns ?? 0} open vulns
+          </span>
           <span>last: {detail.last_run_at ? timeAgo(detail.last_run_at) : 'never'}</span>
+          {newAssets && newAssets.total > 0 && (
+            <span style={{ color: 'var(--green)' }}>+{newAssets.total} new assets</span>
+          )}
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button className="btn btn-primary" onClick={runNow} disabled={launching}>
+            {launching ? 'Launching…' : '▶ Run recon now'}
+          </button>
+          <button className="btn btn-accent" onClick={() => navigate(`/schedules?new=${encodeURIComponent(name)}`)}>
+            🕘 New schedule
+          </button>
         </div>
         {detail.notes && <p className="text-xs mt-2" style={{ color: 'var(--text-3)' }}>{detail.notes}</p>}
       </div>
@@ -208,6 +236,34 @@ function TargetDetail({ name, onChanged, onDeleted }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* New assets — continuous recon feed */}
+      {newAssets && newAssets.items.length > 0 && (
+        <div className="card overflow-hidden">
+          <div className="card-header">
+            <h3 className="section-title">New assets discovered</h3>
+            <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+              first-seen across all runs — review & scope them
+            </span>
+          </div>
+          <div className="p-3 flex flex-wrap gap-1.5">
+            {newAssets.items.slice(0, 60).map(a => (
+              <span key={a.id} className="inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-1 rounded border"
+                    style={{ color: 'var(--text-2)', borderColor: 'var(--border)', background: 'var(--bg-soft)' }}
+                    title={`first seen ${a.first_seen?.replace('T', ' ').slice(0, 16)} · run ${a.run_id}`}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--green)' }} />
+                {a.host}
+                <span style={{ color: 'var(--text-3)' }}>{a.kind}</span>
+              </span>
+            ))}
+            {newAssets.items.length > 60 && (
+              <span className="text-[10px] self-center" style={{ color: 'var(--text-3)' }}>
+                +{newAssets.items.length - 60} more
+              </span>
+            )}
+          </div>
         </div>
       )}
 

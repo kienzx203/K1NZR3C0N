@@ -109,6 +109,7 @@ export const api = {
   patchTarget:   (name, body) => req('PATCH', `/targets/${encodeURIComponent(name)}`, body),
   deleteTarget:  (name) => req('DELETE', `/targets/${encodeURIComponent(name)}`),
   getTargetAudit: (name) => req('GET', `/targets/${encodeURIComponent(name)}/audit`),
+  targetNewAssets: (name) => req('GET', `/targets/${encodeURIComponent(name)}/new-assets`),
   scopeCheck:    (host) => req('GET', `/scope/check?host=${encodeURIComponent(host)}`),
 
   // Tools

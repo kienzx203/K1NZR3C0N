@@ -10,7 +10,8 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from ...db import Finding, Run, ScopeAudit, Target, get_db_dep, target_to_dict, db_get
+from ...db import (Finding, NewAsset, Run, ScopeAudit, Target, get_db_dep,
+                   new_asset_to_dict, target_to_dict, db_get)
 from ...scope import check_target_scope, match_scope
 
 router = APIRouter(tags=["targets"])
@@ -183,3 +184,20 @@ def scope_check(host: str, db: Session = Depends(get_db_dep)) -> dict[str, Any]:
                    else f"covered by {covered_by['name']}" if covered_by
                    else "unregistered — no scope defined"),
     }
+
+
+@router.get("/targets/{name}/new-assets")
+def target_new_assets(
+    name: str,
+    limit: int = Query(100, le=500),
+    db: Session = Depends(get_db_dep),
+) -> dict[str, Any]:
+    """Assets first seen across this target's runs — the continuous-recon feed."""
+    rows = (
+        db.query(NewAsset)
+        .filter(NewAsset.target == name)
+        .order_by(NewAsset.first_seen.desc())
+        .limit(limit)
+        .all()
+    )
+    return {"total": len(rows), "items": [new_asset_to_dict(a) for a in rows]}
