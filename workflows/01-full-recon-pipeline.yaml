@@ -53,6 +53,8 @@ vars:
   gotator_depth: '2'
   shuffledns_threads: '500'    # NAT-safe (1500 flooded)
   perm_threads: '200'          # separate thread count for permutation resolve (fewer resolvers used)
+  brute_list_cap: '500000'     # cap brute wordlists at 500k names — top-500k holds ~all
+                               # real value; 2-9M lists just burn NAT budget + hours
   perm_input_limit: '100'      # max subdomains fed into dnsgen/gotator (more → exponential permutations)
   perm_output_limit: '5000'    # cap dnsgen output before resolving (prevents timeout on large wordlists)
   naabu_rate: '500'            # reduced from 1500 — stable port scan on VMware NAT
@@ -950,11 +952,13 @@ steps:
       | head -50 > {workspace}/recursive_parents.txt || true
     touch {workspace}/recursive_parents.txt
     if test -s {workspace}/recursive_parents.txt; then
-      echo "[recursive] enumerating $(wc -l < {workspace}/recursive_parents.txt) parent domains ..."
-      while IFS= read -r parent; do
-        subfinder -d "$parent" -silent -all -t 100 -timeout 30 2>/dev/null \
-          | grep -E "\.$(echo {target} | sed 's/\./\\./g')$" >> {workspace}/p_recursive.txt || true
-      done < {workspace}/recursive_parents.txt
+      echo "[recursive] enumerating $(wc -l < {workspace}/recursive_parents.txt) parent domains (6-way parallel) ..."
+      # xargs -P 6: parents are independent — the old sequential while-loop
+      # spent ~5-10s per parent back-to-back (48 parents ≈ 8min → ~1.5min).
+      TG=$(echo {target} | sed 's/\./\\./g')
+      cat {workspace}/recursive_parents.txt | xargs -P 6 -I{} sh -c \
+        'subfinder -d "$1" -silent -all -t 50 -timeout 30 2>/dev/null | grep -E "\.$2$" || true' _ {} "$TG" \
+        >> {workspace}/p_recursive.txt || true
     fi
     sort -u -o {workspace}/p_recursive.txt {workspace}/p_recursive.txt
     printf 'recursive sub-subs found: %s\n' "$(wc -l < {workspace}/p_recursive.txt)"
@@ -1043,52 +1047,46 @@ steps:
   outputs:
     file: '{workspace}/reverse_dns_subs.txt'
 - id: active_dns_brute
-  name: active DNS bruteforce — gobuster + shuffledns + puredns + massdns (sequential, VMware NAT safe)
+  name: active DNS bruteforce — gobuster + shuffledns + puredns + massdns + SRV
   depends_on:
   - reverse_dns_asn
   run_on_failed_deps: true
   timeout: 60m
   when: '{vars.run_active_dns}'
   optional: true
-  fanout_concurrency: 1
+  # 2 engines at a time: with filtered resolvers + capped wordlists each engine
+  # is now moderate-load, so 2× parallel halves wall time without NAT risk
+  # (was 1 = fully sequential = 1-2h total).
+  fanout_concurrency: 2
   fanout_timeout_default: 40m
   fanout:
   - id: gobuster_dns
     shell: true
     skip_if_exists: true
     run: |
-      # gobuster: fast, parallel — use namelist for speed + unique coverage vs shuffledns
+      # gobuster: comma-joined live resolvers via --resolver (the -r short flag
+      # is not defined in the installed build). A single hardcoded resolver
+      # dies on flapping NATs (1.1.1.1 was often blocked on this box).
+      GR=$(test -s {workspace}/resolvers_filtered.txt && echo {workspace}/resolvers_filtered.txt || echo {vars.resolvers_file})
       gobuster dns --domain {target} \
         -w {vars.sub_wordlist_namelist} \
-        -t 300 --resolver 1.1.1.1 --timeout 3s \
+        -t 150 --resolver "$(head -20 "$GR" | paste -sd, -)" --timeout 3s \
         -q --no-fqdn --no-progress --no-error \
         -o {workspace}/a_gobuster_dns.txt 2>/dev/null || true
       touch {workspace}/a_gobuster_dns.txt
     outputs:
       file: '{workspace}/a_gobuster_dns.txt'
     optional: true
-  - id: shuffledns
-    shell: true
-    skip_if_exists: true
-    run: |
-      # shuffledns: use 12k validated resolvers + 110k wordlist + strict-wildcard detection
-      RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || printf '1.1.1.1\n8.8.8.8\n')
-      shuffledns -d {target} -w {vars.sub_wordlist_full} \
-        -r "$RFILE" \
-        -t {vars.shuffledns_threads} \
-        -mode bruteforce -sw -silent \
-        -o {workspace}/a_shuffledns.txt 2>/dev/null || true
-      touch {workspace}/a_shuffledns.txt
-    outputs:
-      file: '{workspace}/a_shuffledns.txt'
-    optional: true
+  # NOTE: shuffledns removed — fully redundant with puredns (same top1million
+  # wordlist, same massdns engine family, same wildcard handling). Dropping it
+  # saves NAT budget + wall time without losing coverage.
   - id: puredns
     shell: true
     skip_if_exists: true
     run: |
       # puredns: best wildcard filtering + mass DNS resolver support
-      RFILE=$(test -s {vars.resolvers_file} && echo {vars.resolvers_file} || printf '1.1.1.1\n8.8.8.8\n')
-      cat {vars.sub_wordlist_full} | puredns bruteforce {target} \
+      RFILE=$(test -s {workspace}/resolvers_filtered.txt && echo {workspace}/resolvers_filtered.txt || (test -s {vars.resolvers_file} && echo {vars.resolvers_file} || printf '1.1.1.1\n8.8.8.8\n'))
+      head -{vars.brute_list_cap} {vars.sub_wordlist_full} | puredns bruteforce {target} \
         --resolvers "$RFILE" \
         --wildcard-tests 10 \
         --wildcard-batch 1000000 \
@@ -1105,16 +1103,21 @@ steps:
       # massdns: ultra-fast raw DNS — use dns-Jhaddix 2.17M entries for maximum coverage
       # NOTE: explicit if/else — `a && b || c && d` parses as ((a&&b)||c)&&d in bash,
       # which made RFILE a two-line string when the resolvers file EXISTS.
-      if test -s {vars.resolvers_file}; then
+      # NAT-safe: prefer the preflight-filtered (live) resolver list — blasting
+      # 1500 qps at 13k mostly-dead resolvers is what overflowed the NAT.
+      if test -s {workspace}/resolvers_filtered.txt; then
+        RFILE={workspace}/resolvers_filtered.txt
+      elif test -s {vars.resolvers_file}; then
         RFILE={vars.resolvers_file}
       else
         printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > /tmp/resolvers_fallback.txt
         RFILE=/tmp/resolvers_fallback.txt
       fi
-      # Use Assetnote 9.5M if available, else Jhaddix 2.17M
+      # Use Assetnote 9.5M if available, else Jhaddix 2.17M — capped: top-500k
+      # names hold ~all real value; multi-M just burns NAT budget for hours.
       WLIST=$(test -s {vars.sub_wordlist_assetnote} && echo {vars.sub_wordlist_assetnote} || echo {vars.sub_wordlist_jhaddix})
-      printf '[massdns] using wordlist: %s (%s entries)\n' "$WLIST" "$(wc -l < "$WLIST")"
-      sed "s/$/.{target}/" "$WLIST" > {workspace}/massdns_input.txt
+      printf '[massdns] using wordlist: %s (capped %s of %s entries)\n' "$WLIST" "{vars.brute_list_cap}" "$(wc -l < "$WLIST")"
+      head -{vars.brute_list_cap} "$WLIST" | sed "s/$/.{target}/" > {workspace}/massdns_input.txt
       massdns -r "$RFILE" -t A \
         -o S -w {workspace}/massdns_raw.txt \
         --root -s {vars.massdns_rate} \
@@ -1126,9 +1129,31 @@ steps:
         | grep -E "(^|\.)$(echo {target} | sed 's/\./\\./g')$" \
         | sort -u > {workspace}/a_massdns.txt || true
       touch {workspace}/a_massdns.txt
-      printf 'massdns resolved (Jhaddix 2.17M): %s\n' "$(wc -l < {workspace}/a_massdns.txt)"
+      printf 'massdns resolved (capped list): %s\n' "$(wc -l < {workspace}/a_massdns.txt)"
     outputs:
       file: '{workspace}/a_massdns.txt'
+    optional: true
+  - id: srv_enum
+    shell: true
+    skip_if_exists: true
+    run: |
+      # SRV enumeration: RTC/VPN/AD/federation infra that A-record brute never
+      # sees (_sip/_turn/_autodiscover/_caldav/_ldap._tcp…). ~40 cheap queries.
+      : > {workspace}/a_srv.txt
+      for proto in _sip._tcp _sips._tcp _turn._udp _stun._udp _autodiscover._tcp \
+                   _caldav._tcp _carddav._tcp _ldap._tcp _ldaps._tcp _kerberos._tcp \
+                   _kpasswd._tcp _submission._tcp _imaps._tcp _xmpp-server._tcp \
+                   _matrix._tcp _vpn._udp _openvpn._udp _pptp._tcp _l2tp._udp \
+                   _ipsec._udp _h323cs._tcp _h323ls._udp _collab-edge._tcp; do
+        # $4 = the SRV TARGET host (the box actually serving the service) —
+        # that's the host we want in the scan list.
+        timeout 4 dig +short +time=2 +tries=1 SRV "$proto.{target}" 2>/dev/null \
+          | awk 'NF>=4 {tgt=$4; sub(/\.$/,"",tgt); print tolower(tgt)}' >> {workspace}/a_srv.txt || true
+      done
+      sort -u -o {workspace}/a_srv.txt {workspace}/a_srv.txt
+      printf 'SRV records found: %s\n' "$(wc -l < {workspace}/a_srv.txt)"
+    outputs:
+      file: '{workspace}/a_srv.txt'
     optional: true
 - id: permutation_dns
   name: DNS permutation — dnsgen + alterx + gotator → resolve with dnsx/shuffledns (sequential)
@@ -1322,7 +1347,10 @@ steps:
 
       # ── Step 4: brute-force the generated wordlist ────────────────────────
       # Explicit if/else — see massdns_brute note on the `a && b || c && d` precedence trap.
-      if test -s {vars.resolvers_file}; then
+      # NAT-safe: filtered live resolvers first (same reason as massdns_brute).
+      if test -s {workspace}/resolvers_filtered.txt; then
+        RFILE={workspace}/resolvers_filtered.txt
+      elif test -s {vars.resolvers_file}; then
         RFILE={vars.resolvers_file}
       else
         printf '1.1.1.1\n1.0.0.1\n8.8.8.8\n8.8.4.4\n9.9.9.9\n208.67.222.222\n' > {workspace}/resolvers_fallback.txt
@@ -1351,7 +1379,7 @@ steps:
   shell: true
   run: |
     PASSIVE=$(wc -l < {workspace}/passive_merged.txt 2>/dev/null || echo 0)
-    ACTIVE=$(cat {workspace}/a_gobuster_dns.txt {workspace}/a_shuffledns.txt {workspace}/a_puredns.txt {workspace}/a_massdns.txt 2>/dev/null | wc -l || echo 0)
+    ACTIVE=$(cat {workspace}/a_gobuster_dns.txt {workspace}/a_puredns.txt {workspace}/a_massdns.txt {workspace}/a_srv.txt 2>/dev/null | wc -l || echo 0)
     PERM=$(cat {workspace}/perm_dnsgen.txt {workspace}/perm_alterx.txt {workspace}/perm_gotator.txt {workspace}/perm_target_words.txt 2>/dev/null | wc -l || echo 0)
     (
       cat {workspace}/passive_merged.txt      2>/dev/null || true
@@ -1359,9 +1387,9 @@ steps:
       cat {workspace}/amass_intel.txt         2>/dev/null || true
       cat \
         {workspace}/a_gobuster_dns.txt \
-        {workspace}/a_shuffledns.txt \
         {workspace}/a_puredns.txt \
         {workspace}/a_massdns.txt \
+        {workspace}/a_srv.txt \
         {workspace}/perm_dnsgen.txt \
         {workspace}/perm_alterx.txt \
         {workspace}/perm_gotator.txt \
@@ -1380,6 +1408,33 @@ steps:
   requires:
   - path: '{workspace}/subdomains_all.txt'
     min_bytes: 1
+
+- id: wildcard_probe
+  name: '[resolve] wildcard zone detection — gates the mass-resolve passes'
+  depends_on:
+  - merge_all_subdomains
+  run_on_failed_deps: true
+  shell: true
+  optional: true
+  timeout: 5m
+  # 5 random nonexistent labels: if any resolves, the zone is wildcarded and
+  # puredns (with wildcard filtering) must run. Otherwise the mass UDP resolve
+  # is SKIPPED entirely — httpx (TCP, bounded) becomes the live-host detector.
+  # This is what keeps the NAT alive on typical (non-wildcard) targets.
+  run: |
+    HIT=0
+    for i in 1 2 3 4 5; do
+      RND="k1z-wc-$i-$(date +%s).{target}"
+      if timeout 4 dig +short +time=2 +tries=1 "$RND" 2>/dev/null | grep -q .; then HIT=1; break; fi
+    done
+    printf '%s' "$HIT" > {workspace}/wildcard.flag
+    if [ "$HIT" = "1" ]; then
+      printf 'wildcard zone DETECTED — mass resolve passes will run\n'
+    else
+      printf 'no wildcard — mass resolve skipped, httpx detects live hosts (NAT-safe)\n'
+    fi
+  outputs:
+    file: '{workspace}/wildcard.flag'
 
 - id: resolver_preflight
   name: '[resolve] probe resolvers — keep only the ones alive from this network'
@@ -1422,6 +1477,12 @@ steps:
   retries: 1
   timeout: 30m
   run: |
+    # Conditional resolve: only wildcard zones need the mass UDP resolve
+    [ "$(cat {workspace}/wildcard.flag 2>/dev/null)" = "1" ] || {
+      printf 'no wildcard — skipping mass resolve (httpx is the live detector)\n'
+      touch {workspace}/puredns_live.txt
+      exit 0
+    }
     # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
     GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
     if [ -n "$GW" ]; then
@@ -1467,6 +1528,12 @@ steps:
   retries: 2
   skip_if_exists: true
   run: |
+    # Conditional: wildcard zones only (httpx provides A records otherwise)
+    [ "$(cat {workspace}/wildcard.flag 2>/dev/null)" = "1" ] || {
+      printf 'no wildcard — skipping dnsx enrichment (httpx.jsonl carries A records)\n'
+      touch {workspace}/subdomains_resolved_resp.txt {workspace}/subdomains_resolved.txt
+      exit 0
+    }
     # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
     GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
     if [ -n "$GW" ]; then
@@ -1485,6 +1552,13 @@ steps:
     # -resp outputs "host [IP1, IP2]" format — used by ip_group_analyze later
     dnsx -l "$INPUT" -silent $RFLAG -t {vars.dnsx_threads} -retry {vars.dnsx_retry} \
       -a -aaaa -cname -resp -o {workspace}/subdomains_resolved_resp.txt 2>/dev/null || true
+    # Old dnsx builds / blocked DoH → empty output; fall back to the filtered
+    # UDP resolver list (bounded to live resolvers, rate-limited by preflight).
+    if [ ! -s {workspace}/subdomains_resolved_resp.txt ] && test -s {workspace}/resolvers_filtered.txt; then
+      printf 'dnsx: DoH returned nothing — falling back to filtered UDP resolvers\n'
+      dnsx -l "$INPUT" -silent -r {workspace}/resolvers_filtered.txt -t {vars.dnsx_threads} -retry {vars.dnsx_retry} \
+        -a -aaaa -cname -resp -o {workspace}/subdomains_resolved_resp.txt 2>/dev/null || true
+    fi
     touch {workspace}/subdomains_resolved_resp.txt
     # Extract plain hostnames for all downstream steps
     awk '{print $1}' {workspace}/subdomains_resolved_resp.txt | sort -u > {workspace}/subdomains_resolved.txt
@@ -1512,6 +1586,11 @@ steps:
   #            the zone's source of truth beats any public resolver cache.
   # Leftover after pass 4 = genuinely unresolvable, listed for the record.
   run: |
+    # Conditional: only meaningful when the mass resolve ran (wildcard zones)
+    [ "$(cat {workspace}/wildcard.flag 2>/dev/null)" = "1" ] || {
+      printf 'no wildcard — gap-fill not needed\n'
+      exit 0
+    }
     # NAT guard: don't flood a dying NAT — wait (max 2min) for gateway DNS to recover
     GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
     if [ -n "$GW" ]; then
@@ -1532,6 +1611,11 @@ steps:
     sleep 30
     dnsx -l {workspace}/resolve_gaps.txt -silent -r {vars.doh_resolvers} -t {vars.dnsx_threads} -retry 3 \
       -a -aaaa -cname -resp -o {workspace}/gap_resp_pass3.txt 2>/dev/null || true
+    if [ ! -s {workspace}/gap_resp_pass3.txt ] && test -s {workspace}/resolvers_filtered.txt; then
+      printf 'gap-fill pass3: DoH empty — falling back to filtered UDP resolvers\n'
+      dnsx -l {workspace}/resolve_gaps.txt -silent -r {workspace}/resolvers_filtered.txt -t {vars.dnsx_threads} -retry 3 \
+        -a -aaaa -cname -resp -o {workspace}/gap_resp_pass3.txt 2>/dev/null || true
+    fi
     touch {workspace}/gap_resp_pass3.txt
     awk '{print $1}' {workspace}/gap_resp_pass3.txt | sort -u > {workspace}/gap_live_pass3.txt
 
@@ -1795,6 +1879,16 @@ steps:
       | grep -E '^[a-z0-9][a-z0-9._-]*\.[a-z]{2,}$' \
       | awk -v t="{target}" '$0==t || (length($0)>length(t) && substr($0,length($0)-length(t))==("." t))' \
       | sort -u > {workspace}/subdomains_all_resolved.txt
+    # No-wildcard mode: mass resolve was skipped — ALWAYS union the full
+    # candidate list into the scan targets (httpx filters live hosts itself,
+    # TCP/bounded/NAT-safe). Unconditional union: TLS-SAN/PTR may have added a
+    # few hosts already, which must not suppress the candidate list.
+    if [ "$(cat {workspace}/wildcard.flag 2>/dev/null)" != "1" ]; then
+      printf 'no-wildcard mode: unioning %s candidates into scan targets\n' \
+        "$(wc -l < {workspace}/subdomains_all.txt)"
+      sort -u {workspace}/subdomains_all.txt {workspace}/subdomains_all_resolved.txt \
+        -o {workspace}/subdomains_all_resolved.txt
+    fi
     printf 'Total resolved (DNS+TLS+PTR+Records, scope-filtered): %s\n' \
       "$(wc -l < {workspace}/subdomains_all_resolved.txt)" >> {workspace}/resolve_stats.txt || true
   outputs:
@@ -1972,10 +2066,15 @@ steps:
   skip_if_exists: true
   shell: true
   run: |
+    # -a -cname: record resolved A/CNAME in the jsonl — ip_group_httpx below
+    # derives origin/shared-hosting intel from these (no extra DNS load: httpx
+    # already resolves every host while probing).
+    # -retries 2: a NAT flap during probing must not mark a live host dead
+    # (completeness guard — httpx is the live detector in no-wildcard mode).
     httpx -l {workspace}/web_targets.txt \
       -silent -json -o {workspace}/httpx.jsonl \
-      -td -title -status-code -content-length \
-      -follow-redirects \
+      -td -title -status-code -content-length -a -cname \
+      -follow-redirects -retries 2 \
       -timeout {vars.httpx_timeout} \
       -threads {vars.httpx_threads} \
       -random-agent 2>/dev/null || true
@@ -1984,6 +2083,35 @@ steps:
   outputs:
     httpx_jsonl: '{workspace}/httpx.jsonl'
     alive_file: '{workspace}/httpx.jsonl'
+
+- id: ip_group_httpx
+  name: '[IP] derive IP groups from httpx live results — authoritative post-probe'
+  depends_on:
+  - httpx
+  run_on_failed_deps: true
+  timeout: 5m
+  shell: true
+  optional: true
+  # In no-wildcard mode the early resolve passes were skipped, so httpx.jsonl
+  # is THE source of host→IP truth. Overwrites the (possibly empty) early
+  # ip_groups so shared-hosting/origin intel stays correct.
+  run: |
+    test -s {workspace}/httpx.jsonl || exit 0
+    mkdir -p {workspace}/ip_groups
+    jq -r 'select((.a? // []) | length > 0)
+           | ((.host // "" | sub("^https?://";"") | sub("/.*$";""))
+              + " [" + (.a | join(", ")) + "]")' \
+      {workspace}/httpx.jsonl > {workspace}/subdomains_resolved_resp.txt 2>/dev/null || true
+    python {vars.scripts_dir}/scripts/group_by_ip.py \
+      --input {workspace}/subdomains_resolved_resp.txt \
+      --output-dir {workspace}/ip_groups 2>/dev/null || true
+    touch {workspace}/ip_groups/unique_ips.txt {workspace}/ip_groups/shared_hosting.txt
+    printf 'httpx-derived — unique IPs: %s | shared-hosting: %s\n' \
+      "$(wc -l < {workspace}/ip_groups/unique_ips.txt)" \
+      "$(wc -l < {workspace}/ip_groups/shared_hosting.txt)"
+  outputs:
+    dir: '{workspace}/ip_groups'
+
 - id: extract_live_urls
   name: extract live URLs from httpx → for crawl + vuln scan input
   depends_on:

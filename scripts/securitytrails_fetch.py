@@ -226,7 +226,10 @@ def _http_json_retry(method: str, path: str, api_key: str,
         if status == 200 and data is not None:
             return status, data
         last = (status, data)
-        if status in (401, 403, 402, 429):
+        # 4xx (except 429) are permanent client/plan errors — retrying burns
+        # minutes on calls that can never succeed (observed: 400 from a wrong
+        # endpoint shape wasted 7min of st_intel_retry for nothing).
+        if status in (400, 401, 402, 403, 404, 429):
             break
         if i < attempts - 1:
             time.sleep(delay)
@@ -260,9 +263,11 @@ def fetch_subdomains(api_key: str, domain: str) -> list[str]:
 def fetch_records(api_key: str, domain: str) -> list[str]:
     """Current + historical DNS records, like the web /dns page."""
     out: list[str] = []
-    for rtype in ("NS", "MX", "A", "AAAA", "TXT"):
+    # Record type lives in the PATH per API docs (/dns/a, /dns/ns, …) — the
+    # old ?type=A query form returns 400 "history type not supported".
+    for rtype in ("ns", "mx", "a", "aaaa", "txt"):
         status, data = _http_json_retry(
-            "GET", f"/v1/history/{domain}/dns/records?type={rtype}", api_key)
+            "GET", f"/v1/history/{domain}/dns/{rtype}", api_key)
         if status != 200 or data is None:
             if status in (401, 403):
                 log(f"records {rtype}: HTTP {status} — check API key")
@@ -271,50 +276,60 @@ def fetch_records(api_key: str, domain: str) -> list[str]:
         for rec in data.get("records", []):
             values = rec.get("values") or []
             for v in values:
-                val = v.get("value") if isinstance(v, dict) else str(v)
+                if isinstance(v, dict):
+                    val = (v.get("value") or v.get("ip") or v.get("nameserver")
+                           or v.get("exchange") or v.get("text") or "")
+                    if isinstance(val, list):
+                        val = ",".join(map(str, val))
+                else:
+                    val = str(v)
                 first = rec.get("first_seen", "")
                 last = rec.get("last_seen", "")
                 if val:
-                    out.append(f"{rtype}\t{val}\t{first}\t{last}")
+                    out.append(f"{rtype.upper()}\t{val}\t{first}\t{last}")
         time.sleep(1)  # stay gentle on quota
     return out
 
 
 # ── mode: all — remaining API surfaces ───────────────────────────────────────
 
-def fetch_domain_info(api_key: str, domain: str) -> dict:
-    """GET /v1/domain/{hostname} — current snapshot (DNS values, counts…)."""
+def fetch_domain_info(api_key: str, domain: str) -> dict | None:
+    """GET /v1/domain/{hostname} — current snapshot (DNS values, counts…).
+    None = permanent 4xx → callers must not retry."""
     status, data = _http_json_retry("GET", f"/v1/domain/{domain}", api_key)
-    if status in (401, 403):
-        log(f"domain info: HTTP {status} — check API key")
-        return {}
+    if status in (400, 401, 402, 403, 404):
+        log(f"domain info: HTTP {status} — permanent error, skipping")
+        return None
     return data or {}
 
 
-def fetch_whois(api_key: str, domain: str) -> dict:
-    """GET /v1/domain/{hostname}/whois — current WHOIS record."""
+def fetch_whois(api_key: str, domain: str) -> dict | None:
+    """GET /v1/domain/{hostname}/whois — current WHOIS record.
+    None = permanent 4xx → callers must not retry."""
     status, data = _http_json_retry("GET", f"/v1/domain/{domain}/whois", api_key)
-    if status in (401, 403):
-        log(f"whois: HTTP {status} — check API key")
-        return {}
+    if status in (400, 401, 402, 403, 404):
+        log(f"whois: HTTP {status} — permanent error, skipping")
+        return None
     return data or {}
 
 
-def fetch_whois_history(api_key: str, domain: str) -> dict:
-    """GET /v1/history/{hostname}/whois — every WHOIS change ST has seen."""
+def fetch_whois_history(api_key: str, domain: str) -> dict | None:
+    """GET /v1/history/{hostname}/whois — every WHOIS change ST has seen.
+    None = permanent 4xx → callers must not retry."""
     status, data = _http_json_retry("GET", f"/v1/history/{domain}/whois", api_key)
-    if status in (401, 403):
-        log(f"whois history: HTTP {status} — check API key")
-        return {}
+    if status in (400, 401, 402, 403, 404):
+        log(f"whois history: HTTP {status} — permanent error, skipping")
+        return None
     return data or {}
 
 
-def fetch_ssl(api_key: str, domain: str) -> dict:
-    """GET /v1/domain/{hostname}/ssl — TLS certificates observed for the domain."""
+def fetch_ssl(api_key: str, domain: str) -> dict | None:
+    """GET /v1/domain/{hostname}/ssl — TLS certificates observed for the domain.
+    None = permanent 4xx → callers must not retry."""
     status, data = _http_json_retry("GET", f"/v1/domain/{domain}/ssl", api_key)
-    if status in (401, 403):
-        log(f"ssl: HTTP {status} — check API key")
-        return {}
+    if status in (400, 401, 402, 403, 404):
+        log(f"ssl: HTTP {status} — permanent error, skipping")
+        return None
     return data or {}
 
 
@@ -403,8 +418,11 @@ def fetch_associated(api_key: str, domain: str) -> list[str]:
             "GET", f"/v1/domain/{domain}/associated?apikey={api_key}&page={page}",
             api_key)
         if status != 200 or data is None:
-            if page == 1 and status in (402, 403):
-                log("associated: needs a higher plan — skipping")
+            if page == 1:
+                if status in (400, 401, 402, 403, 404):
+                    log(f"associated: HTTP {status} — permanent error, skipping")
+                    return None
+                return None   # network failure — caller may retry
             break
         recs = []
         for r in data.get("records", []):
@@ -604,8 +622,9 @@ def fetch_pivot(api_key: str, domain: str, cookie: str,
         log("pivot: fetching ST associated domains")
         assoc: list[str] = []
         for attempt in range(3):
-            assoc = fetch_associated(api_key, domain)
-            if assoc:
+            got = fetch_associated(api_key, domain)
+            if got is not None:      # None = hard failure; [] = truth (no assoc)
+                assoc = got
                 break
             time.sleep(10)
         for d in assoc:
@@ -703,8 +722,9 @@ def main():
         log("all: fetching associated domains")
         assoc: list[str] = []
         for attempt in range(3):
-            assoc = fetch_associated(api_key, domain)
-            if assoc:
+            got = fetch_associated(api_key, domain)
+            if got is not None:      # None = hard failure; [] = truth (no assoc)
+                assoc = got
                 break
             time.sleep(10)
         _write(os.path.join(out_dir, "st_associated.txt"),
@@ -737,14 +757,19 @@ def main():
             return (not os.path.exists(p)) or os.path.getsize(p) <= 3
 
         fixed: list[str] = []
+
+        def _assoc_filtered():
+            got = fetch_associated(api_key, domain)
+            if got is None:
+                return None
+            return [d for d in got if d != domain.lower()]
+
         text_sections = (
             ("st_subdomains.txt",
              lambda: sorted(set(fetch_subdomains(api_key, domain)))),
             ("st_dns_records.txt",
              lambda: fetch_records(api_key, domain)),
-            ("st_associated.txt",
-             lambda: [d for d in fetch_associated(api_key, domain)
-                      if d != domain.lower()]),
+            ("st_associated.txt", _assoc_filtered),
             ("st_pivot_domains.txt",
              lambda: fetch_pivot(api_key, domain, cookie, pivot_types, False)),
         )
@@ -754,7 +779,11 @@ def main():
             for attempt in range(3):
                 log(f"missing: fetching {name} (attempt {attempt + 1}/3)")
                 data = fetcher()
-                if data:
+                if data is None:
+                    log(f"missing: {name} — hard API failure, not retrying")
+                    break
+                if data or name == "st_associated.txt":
+                    # [] for associated is a truthful "no associated domains"
                     _write(os.path.join(out_dir, name), data)
                     fixed.append(f"{name}: {len(data)}")
                     break
@@ -771,6 +800,9 @@ def main():
             for attempt in range(3):
                 log(f"missing: fetching {name} (attempt {attempt + 1}/3)")
                 data = fetcher()
+                if data is None:
+                    log(f"missing: {name} — permanent API error, not retrying")
+                    break
                 if data:
                     _write_json(os.path.join(out_dir, name), data)
                     fixed.append(name)
