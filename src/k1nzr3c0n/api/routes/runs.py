@@ -192,7 +192,7 @@ def run_stats(db: Session = Depends(get_db_dep)) -> dict[str, Any]:
 
     sev_rows = (
         db.query(Finding.severity, func.count(Finding.id))
-        .filter(Finding.kind == "vuln")
+        .filter(Finding.kind == "vuln", Finding.status == "open")
         .group_by(Finding.severity)
         .all()
     )

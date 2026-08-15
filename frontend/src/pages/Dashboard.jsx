@@ -9,7 +9,9 @@ const SEV_META = [
   { key: 'high',     label: 'High',     color: '#f0883e' },
   { key: 'medium',   label: 'Medium',   color: '#f0b429' },
   { key: 'low',      label: 'Low',      color: '#58a6ff' },
+  { key: 'info',     label: 'Info',     color: '#8b949e' },
 ]
+const UNKNOWN_COLOR = '#6e7681'
 
 /* Small stroke icons for stat cards */
 const ICONS = {
@@ -74,11 +76,15 @@ function Skeleton() {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
+  const [assets, setAssets] = useState(null)
+  const [targetsTotal, setTargetsTotal] = useState(null)
   const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
     const load = () => api.getStats().then(setStats).catch(() => {})
     load()
+    api.getAssetsStats().then(setAssets).catch(() => {})
+    api.getTargets().then(t => setTargetsTotal(t?.total ?? 0)).catch(() => {})
     const t = setInterval(load, 5000)
     return () => clearInterval(t)
   }, [])
@@ -87,11 +93,13 @@ export default function Dashboard() {
 
   const { total, by_status, findings, recent } = stats
   const bySev = findings?.by_severity || {}
-  const sevTotal = SEV_META.reduce((n, s) => n + (bySev[s.key] || 0), 0)
+  const unknownN = bySev.unknown || 0
+  const sevTotal = SEV_META.reduce((n, s) => n + (bySev[s.key] || 0), 0) + unknownN
   const hasFindings = (findings?.total || 0) > 0
+  const topTech = assets ? Object.entries(assets.by_tech || {}).slice(0, 8) : []
 
   return (
-    <div className="p-6 space-y-6 max-w-[1200px]">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="page-header">
         <div>
@@ -113,6 +121,59 @@ export default function Dashboard() {
         <StatCard label="Failed"     value={by_status.failed}    icon={ICONS.failed}    color="var(--red)"   to="/runs?status=failed" />
       </div>
 
+      {/* Attack surface overview */}
+      {assets && (
+        <div className="card overflow-hidden fade-in">
+          <div className="card-header">
+            <div className="flex items-center gap-2.5">
+              <h2 className="section-title">Attack Surface</h2>
+              <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
+                {targetsTotal ?? 0} target{(targetsTotal ?? 0) === 1 ? '' : 's'} tracked
+              </span>
+            </div>
+            <Link to="/inventory" className="text-[10px] hover:underline" style={{ color: 'var(--accent)' }}>
+              Inventory →
+            </Link>
+          </div>
+          <div className="p-4">
+            <div className="grid grid-cols-3 gap-3">
+              <Link to="/inventory" className="rounded-lg p-3.5 border transition-all hover:-translate-y-px"
+                    style={{ borderColor: 'var(--border)', background: 'var(--bg-soft)' }}>
+                <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Live hosts</p>
+                <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--accent)' }}>
+                  {assets.total ?? 0}
+                </p>
+              </Link>
+              <Link to="/inventory" className="rounded-lg p-3.5 border transition-all hover:-translate-y-px"
+                    style={{ borderColor: 'var(--border)', background: 'var(--bg-soft)' }}>
+                <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Screenshots</p>
+                <p className="text-[24px] leading-none font-bold font-mono mt-2" style={{ color: 'var(--text)' }}>
+                  {assets.with_screenshot ?? 0}
+                </p>
+              </Link>
+              <Link to="/findings" className="rounded-lg p-3.5 border transition-all hover:-translate-y-px"
+                    style={{ borderColor: 'var(--border)', background: 'var(--bg-soft)' }}>
+                <p className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-2)' }}>Open vulns</p>
+                <p className="text-[24px] leading-none font-bold font-mono mt-2"
+                   style={{ color: (findings?.open_vulns || 0) > 0 ? 'var(--red)' : 'var(--text-3)' }}>
+                  {findings?.open_vulns ?? 0}
+                </p>
+              </Link>
+            </div>
+            {topTech.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-3">
+                {topTech.map(([t, n]) => (
+                  <span key={t} className="text-[10px] font-mono px-2 py-1 rounded-full border"
+                        style={{ borderColor: 'var(--border)', color: 'var(--text-2)', background: 'var(--surface-2)' }}>
+                    {t} <span style={{ color: 'var(--text-3)' }}>×{n}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Findings severity breakdown */}
       {hasFindings && (
         <div className="card overflow-hidden fade-in">
@@ -121,6 +182,7 @@ export default function Dashboard() {
               <h2 className="section-title">Findings</h2>
               <span className="text-[10px]" style={{ color: 'var(--text-3)' }}>
                 {findings.total} total · {findings.open_vulns} open vulns
+                {unknownN > 0 && <> · {unknownN} unclassified</>}
               </span>
             </div>
             <Link to="/findings" className="text-[10px] hover:underline" style={{ color: 'var(--accent)' }}>
@@ -138,9 +200,12 @@ export default function Dashboard() {
                     <div key={key} title={`${key}: ${n}`} style={{ width: `${(n / sevTotal) * 100}%`, background: color }} />
                   )
                 })}
+                {unknownN > 0 && (
+                  <div title={`unknown: ${unknownN}`} style={{ width: `${(unknownN / sevTotal) * 100}%`, background: UNKNOWN_COLOR }} />
+                )}
               </div>
             )}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               {SEV_META.map(({ key, label, color }) => {
                 const n = bySev[key] ?? 0
                 return (
