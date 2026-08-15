@@ -1660,10 +1660,15 @@ steps:
     naabu -list {steps.merge_all_resolved.all_resolved} -passive \
       -json -silent 2>/dev/null >> {workspace}/naabu.jsonl || true
     printf '[naabu] passive (Shodan): %s port records\n' "$(wc -l < {workspace}/naabu.jsonl)"
-    # Phase 2: active CONNECT scan on common web ports (reliable on VMware NAT)
-    # Avoids -top-ports N which is slow; targets ports most likely to be HTTP/app servers
+    # Phase 2: active CONNECT scan on common web/app ports (reliable on VMware NAT)
+    # Avoids -top-ports N which is slow; targets ports most likely to be
+    # HTTP/app servers. 100 ports: web basics + cPanel (2082/2083/2087/2089),
+    # Docker/etcd (2375/2376/2379/2380), Kubernetes (6443/10250/10255),
+    # WebLogic (7001/7002), vCenter/UniFi (7443), Proxmox (8006), Kibana (5601),
+    # Synology (5001), RabbitMQ-mgmt (15672), alt-HTTPS (3443/4433/4443),
+    # InfluxDB (8086), WildFly (9990), GlassFish (4848), Bitbucket (7990).
     naabu -list {steps.merge_all_resolved.all_resolved} \
-      -p 80,81,443,591,593,832,981,1010,1311,2082,2087,2095,2096,2480,3000,3128,3333,4243,4567,4711,4712,4993,5000,5104,5108,5800,6543,7000,7396,7474,8000,8001,8008,8014,8042,8069,8080,8081,8083,8088,8090,8091,8118,8123,8172,8222,8243,8280,8281,8333,8443,8500,8834,8880,8888,8983,9000,9043,9060,9080,9090,9091,9200,9443,9800,9981,10000,11371,12443,16080,18091,18092,20720,28017 \
+      -p 80,81,443,591,593,832,981,1010,1311,2082,2083,2087,2089,2095,2096,2375,2376,2379,2380,2480,3000,3001,3128,3333,3443,4243,4433,4443,4567,4711,4712,4848,4993,5000,5001,5104,5108,5601,5800,6443,6543,7000,7001,7002,7396,7443,7474,7990,8000,8001,8006,8008,8014,8042,8069,8080,8081,8083,8086,8088,8090,8091,8118,8123,8172,8181,8222,8243,8280,8281,8333,8443,8500,8834,8880,8888,8983,9000,9043,9060,9080,9090,9091,9093,9200,9443,9800,9981,9990,10000,10250,10255,11371,12443,15672,16080,18091,18092,20720,28017 \
       -rate {vars.naabu_rate} -json -silent -r {vars.dns_resolvers} 2>/dev/null >> {workspace}/naabu.jsonl || true
     printf '[naabu] total port records (passive+active): %s\n' "$(wc -l < {workspace}/naabu.jsonl)"
   outputs:
@@ -1774,26 +1779,33 @@ steps:
       file: '{workspace}/nmap_service.txt'
     optional: true
 - id: extract_web_targets
-  name: extract web targets — resolved hosts + naabu web ports (80/443/8x)
+  name: extract web targets — resolved hosts + EVERY live port as host:port
   depends_on:
   - merge_all_resolved
   - naabu_asn_scan
   # Was depending on deep_portscan (hours-long full-range scan) which gated
   # the entire web chain. This step only consumes subdomains_all_resolved.txt
-  # + naabu.jsonl — both ready far earlier.
+  # + naabu.jsonl + naabu_asn.jsonl — all ready far earlier.
   run_on_failed_deps: true
   timeout: 5m
   shell: true
   run: |
+    # Flow: naabu live ports → combine with their host as host:port → httpx
+    # probes each domain:port (httpx accepts host:port / ip:port natively).
+    # No 10-port whitelist: naabu_topscan only scans web ports, so every
+    # record in naabu.jsonl is an HTTP candidate. This is what makes the
+    # screenshot/vuln chain cover ALL live web services, not just 80/443/8080.
     (
-      # Resolved subdomains (primary source)
+      # Resolved subdomains (bare) — httpx probes these on default 80/443 as
+      # a safety net in case naabu missed a port (rate-limit / NAT flap).
       cat {workspace}/subdomains_all_resolved.txt 2>/dev/null || true
-      # naabu port scan results — specific web ports
+      # All live ports on domains → domain:port
       if test -f {workspace}/naabu.jsonl; then
-        jq -r 'select(.port and (.port==80 or .port==443 or .port==8080 or .port==8443 or .port==8888 or .port==9090 or .port==9443 or .port==3000 or .port==5000 or .port==4443)) | "\(.host // .ip)"' \
-          {workspace}/naabu.jsonl 2>/dev/null || true
-        jq -r '"\(.host // .ip):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null \
-          | grep -E ':(80|443|8080|8443|8888|9090|9443|3000|5000|4443)$' || true
+        jq -r 'select(.port) | "\(.host // .ip):\(.port)"' {workspace}/naabu.jsonl 2>/dev/null || true
+      fi
+      # All live ports on ASN-range IPs → ip:port
+      if test -f {workspace}/naabu_asn.jsonl; then
+        jq -r 'select(.port) | "\(.host // .ip):\(.port)"' {workspace}/naabu_asn.jsonl 2>/dev/null || true
       fi
     ) | sort -u > {workspace}/web_targets.txt
     # Fallback: if nothing resolved, always probe the root target itself
@@ -1813,18 +1825,22 @@ steps:
   skip_if_exists: true
   shell: true
   run: |
-    # -a -cname: record resolved A/CNAME in the jsonl — ip_group_httpx below
-    # derives origin/shared-hosting intel from these (no extra DNS load: httpx
-    # already resolves every host while probing).
+    # httpx auto-populates "a"/"aaaa"/"host_ip" fields in its JSON output —
+    # ip_group_httpx below derives origin/shared-hosting intel from .a (no
+    # extra DNS load: httpx already resolves every host while probing).
+    # NOTE: httpx has NO -a flag (that's dnsx syntax) — passing it kills the
+    # entire probe instantly with "flag provided but not defined: -a" and the
+    # old `2>/dev/null` swallowed the error (run ae705820: httpx.jsonl empty
+    # → live_urls empty → screenshot produced nothing). stderr now logged.
     # -retries 2: a NAT flap during probing must not mark a live host dead
     # (completeness guard — httpx is the live detector in no-wildcard mode).
     httpx -l {workspace}/web_targets.txt \
       -silent -json -o {workspace}/httpx.jsonl \
-      -td -title -status-code -content-length -a -cname \
+      -td -title -status-code -content-length -cname \
       -follow-redirects -retries 2 \
       -timeout {vars.httpx_timeout} \
       -threads {vars.httpx_threads} \
-      -random-agent 2>/dev/null || true
+      -random-agent 2>{workspace}/httpx_stderr.log || true
     touch {workspace}/httpx.jsonl
     printf 'httpx live hosts: %s\n' "$(wc -l < {workspace}/httpx.jsonl)"
   outputs:
