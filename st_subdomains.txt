@@ -1,0 +1,10 @@
+ext.norma.fr
+ftptransport.norma.fr
+mail.norma.fr
+nomade.norma.fr
+old.norma.fr
+vpn.norma.fr
+vpnclient.norma.fr
+web01.norma.fr
+web02.norma.fr
+www.norma.fr

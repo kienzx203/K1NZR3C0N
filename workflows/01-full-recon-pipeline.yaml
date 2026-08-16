@@ -960,7 +960,7 @@ steps:
     ST_COOKIE="${ST_COOKIE:-}"
     [ -z "$ST_KEY" ] && exit 0
     python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
-      --mode missing --out {workspace} --pivot-types ns,mx ${ST_COOKIE:+--cookie "$ST_COOKIE"} || true
+      --mode all --out {workspace} --pivot-types ns,mx ${ST_COOKIE:+--cookie "$ST_COOKIE"} || true
     for f in st_dns_records.txt st_associated.txt st_pivot_domains.txt; do
       touch {workspace}/$f
     done
@@ -2395,6 +2395,14 @@ steps:
   # the slow part. Outputs of old pivots stay visible via the cross-run
   # Inventory. pivot_rescan_all=true forces a full rescan (and refreshes seen).
   run: |
+    ST_KEY="${SECURITYTRAILS_KEY:-}"
+    ST_COOKIE="${ST_COOKIE:-}"
+    [ -z "$ST_KEY" ] && exit 0
+    python3 ${K1NZR3C0N_BASE:-/opt/k1nzr3c0n}/scripts/securitytrails_fetch.py "$ST_KEY" "{target}" \
+      --mode missing --out {workspace} --pivot-types ns,mx ${ST_COOKIE:+--cookie "$ST_COOKIE"} || true
+    for f in st_dns_records.txt st_associated.txt st_pivot_domains.txt; do
+      touch {workspace}/$f
+    done
     SEEN="$(dirname {workspace})/.seen_pivot_domains.txt"
     touch "$SEEN"
     if [ "{vars.pivot_rescan_all}" = "true" ]; then

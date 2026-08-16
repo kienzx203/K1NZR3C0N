@@ -687,17 +687,7 @@ def main():
         log("empty API key — nothing to do")
         sys.exit(0)
 
-    if mode == "subdomains":
-        for line in fetch_subdomains(api_key, domain):
-            print(line)
-    elif mode == "records":
-        for line in fetch_records(api_key, domain):
-            print(line)
-    elif mode == "pivot":
-        for line in fetch_pivot(api_key, domain, cookie, pivot_types,
-                                include_associated):
-            print(line)
-    elif mode == "all":
+    if mode == "all":
         # One-shot: EVERYTHING the ST API exposes for the target.
         #   st_subdomains.txt       all subdomains
         #   st_dns_records.txt      NS/MX/A/AAAA/TXT current + historical
@@ -745,15 +735,11 @@ def main():
                sorted({d for d in assoc if d != domain.lower()}))
 
         log("all: fetching NS/MX pivot")
-        pivots = fetch_pivot(api_key, domain, cookie, pivot_types,
-                             include_associated=False)
-        _write(os.path.join(out_dir, "st_pivot_domains.txt"), pivots)
 
         summary = [
             f"subdomains: {len(subs)}  → st_subdomains.txt",
             f"dns records: {len(records)}  → st_dns_records.txt",
             f"associated: {len(assoc)}  → st_associated.txt",
-            f"pivot domains: {len(pivots)}  → st_pivot_domains.txt",
             f"domain info / whois / whois history / ssl  → *.json",
         ]
         print("\n".join(summary))

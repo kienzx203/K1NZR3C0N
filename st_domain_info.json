@@ -1,0 +1,140 @@
+{
+  "hostname": "norma.fr",
+  "alexa_rank": null,
+  "apex_domain": "norma.fr",
+  "endpoint": "/v1/domain/norma.fr",
+  "current_dns": {
+    "a": {
+      "values": [
+        {
+          "cname": null,
+          "h": null,
+          "ip": "23.53.11.141",
+          "ip_count": 0,
+          "ip_organization": "Akamai International B.V."
+        },
+        {
+          "cname": null,
+          "h": null,
+          "ip": "23.53.11.145",
+          "ip_count": 0,
+          "ip_organization": "Akamai International B.V."
+        }
+      ],
+      "hostname": "norma.fr",
+      "first_seen": "2026-08-04"
+    },
+    "aaaa": {
+      "values": [
+        {
+          "h": null,
+          "ipv6": "2600:1408:ec00:10::1730:cb07",
+          "ipv6_count": 0,
+          "ipv6_organization": null
+        },
+        {
+          "h": null,
+          "ipv6": "2600:1408:ec00:10::1730:cb0f",
+          "ipv6_count": 0,
+          "ipv6_organization": null
+        }
+      ],
+      "first_seen": "2026-06-23"
+    },
+    "txt": {
+      "values": [
+        {
+          "value": "v=spf1 a:mail-out.diatem.net a:spf-cloud.mms.t-systems-service.com include:antispameurope.com ~all"
+        },
+        {
+          "value": "knowbe4-site-verification=ce7982e6db94a09da9a1b529c95f6d50"
+        },
+        {
+          "value": "cisco-ci-domain-verification=f9c9d4f2a199ab33bd3994be25da154e6f59158c3d2df8c0522aaaad3c12444"
+        },
+        {
+          "value": "_globalsign-domain-verification=QCdqVGXzk1jOym8wuTUeMgdT1D-Roc9CufOjEwTaKv"
+        },
+        {
+          "value": "_fjnb3rvb9s6nf1pae3a0khe7rth9o36"
+        }
+      ],
+      "first_seen": "2026-06-17"
+    },
+    "mx": {
+      "values": [
+        {
+          "priority": 40,
+          "hostname": "mx19d.antispameurope.com",
+          "hostname_count": 0,
+          "hostname_organization": "Hostway Deutschland GmbH"
+        },
+        {
+          "priority": 30,
+          "hostname": "mx19c.antispameurope.com",
+          "hostname_count": 0,
+          "hostname_organization": "MK Netzdienste GmbH & Co. KG"
+        },
+        {
+          "priority": 20,
+          "hostname": "mx19b.antispameurope.com",
+          "hostname_count": 0,
+          "hostname_organization": "Hostway Deutschland GmbH"
+        },
+        {
+          "priority": 10,
+          "hostname": "mx19a.antispameurope.com",
+          "hostname_count": 0,
+          "hostname_organization": "Hostway Deutschland GmbH"
+        }
+      ],
+      "first_seen": "2017-09-29"
+    },
+    "soa": {
+      "values": [
+        {
+          "email": "administrateur.norma.fr",
+          "email_count": 0,
+          "ttl": 3600
+        }
+      ],
+      "first_seen": "2024-12-13"
+    },
+    "ns": {
+      "values": [
+        {
+          "nameserver": "a3-67.akam.net",
+          "nameserver_count": 0,
+          "nameserver_organization": "Akamai International B.V."
+        },
+        {
+          "nameserver": "a24-67.akam.net",
+          "nameserver_count": 0,
+          "nameserver_organization": "Akamai International B.V."
+        },
+        {
+          "nameserver": "a20-65.akam.net",
+          "nameserver_count": 0,
+          "nameserver_organization": "Akamai International B.V."
+        },
+        {
+          "nameserver": "a18-64.akam.net",
+          "nameserver_count": 0,
+          "nameserver_organization": "Akamai International B.V."
+        },
+        {
+          "nameserver": "a13-67.akam.net",
+          "nameserver_count": 0,
+          "nameserver_organization": "Akamai International B.V."
+        },
+        {
+          "nameserver": "a1-198.akam.net",
+          "nameserver_count": 0,
+          "nameserver_organization": "Akamai International B.V."
+        }
+      ],
+      "first_seen": "2024-12-16"
+    }
+  },
+  "subdomain_count": 1
+}

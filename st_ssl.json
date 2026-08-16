@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "query": {
+      "domain": "norma.fr"
+    },
+    "total_pages": 0,
+    "page": 1,
+    "max_page": 0
+  },
+  "records": [
+    {
+      "id": "j9strieyw+uk9kxsc3cflyhrcat5g2llkw/j72cm2uw=",
+      "raw": null,
+      "public_key": {
+        "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0sskqE9mg993a6GPvW7Bw0oWqTwN+tgU4tKkjfqweN8/XktJoorQk9uGc+/aDo2UFfYZR8Yd6nQY7UzRSFYlOhdLpsbgcV45GU7r4xg+m66O7QRo5/+gOiHN+TEdwkeJTJ4HHBjg4HGDnHXWEDzCudxVminaGtHAISOZAdZnQ6o5hYshwvF8RyJ/WvY16AiQ34Ep8fNTyJvGa5jCLleISy41fl3byN7G9WKD2sQOGBsIGtf7r1WWfK3657C//aniBSj++K73NsjfHGbJ5NT7RVMQ+aH+rWGDq4QY3GfVfwn8q6mQJyk2m3kFvW5iKk0g/bBhCeP0BEriJAvA8akulwIDAQAB",
+        "bit_length": 0,
+        "key_type": "RSA"
+      },
+      "x509": false,
+      "issuer": {
+        "country": [
+          "US"
+        ],
+        "common_name": "DigiCert Global G2 TLS RSA SHA256 2020 CA1",
+        "organization": [
+          "DigiCert Inc"
+        ]
+      },
+      "subject": {
+        "country": [
+          "DE"
+        ],
+        "common_name": "norma.fr",
+        "organization": [
+          "Norma Lebensmittelfilialbetrieb Stiftung & Co. KG"
+        ],
+        "locality": [
+          "Fürth"
+        ],
+        "province": [
+          "Bayern"
+        ]
+      },
+      "not_before": 1781568000,
+      "not_after": 1798761599,
+      "serial_number": "7214666859119620889087034497145143102",
+      "dns_names": [
+        "norma.fr",
+        "www.norma.fr"
+      ],
+      "fingerprints": {
+        "md5": "",
+        "sha256": "",
+        "sha1": ""
+      },
+      "precert": true,
+      "subject_key_id": "bhzuqt2eAAo9jMIwDM9Q4ZOg/Jo="
+    },
+    {
+      "id": "krgo7lvbhqivztkkpn4xbgsycrr77qzbgixyftxhpuq=",
+      "raw": null,
+      "public_key": {
+        "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEEARAuKNJaVq33zyZWDwJYqBS0sKnxuMPigkJP07x+lvnMUNkP2kJ2P7qV57e9a4thlg7/FawARpWfdVVNQesBg==",
+        "bit_length": 0,
+        "key_type": "ECDSA"
+      },
+      "x509": false,
+      "issuer": {
+        "country": [
+          "US"
+        ],
+        "common_name": "DigiCert Global G3 TLS ECC SHA384 2020 CA1",
+        "organization": [
+          "DigiCert Inc"
+        ]
+      },
+      "subject": {
+        "country": [
+          "DE"
+        ],
+        "common_name": "norma.fr",
+        "organization": [
+          "Norma Lebensmittelfilialbetrieb Stiftung & Co. KG"
+        ],
+        "locality": [
+          "Fürth"
+        ],
+        "province": [
+          "Bayern"
+        ]
+      },
+      "not_before": 1781568000,
+      "not_after": 1798761599,
+      "serial_number": "14907003752084242100373338441611751548",
+      "dns_names": [
+        "norma.fr",
+        "www.norma.fr"
+      ],
+      "fingerprints": {
+        "md5": "",
+        "sha256": "",
+        "sha1": ""
+      },
+      "precert": true,
+      "subject_key_id": "uN4zR1t6JDErN5PgHAhrrTesCoM="
+    },
+    {
+      "id": "6l8pkz8tgovzonn3pxcaak+4oupe6udju6hduzm7koi=",
+      "raw": null,
+      "public_key": {
+        "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuQgbj2Up8Q1ewNDJk2rbJjbAx9S4MITUoetwHYCtG2YEEh4fuBLgKRMy5ZM9kRnoAFJ7VMNTI7l7x8iRjpkbHAWIwqTvlWmvMPhjuyPQZbzfvk2JXdjQbByq04yNw2kfAdmz7ioc+i3zEnAEcrUmFLv7+lsgBdPZyR6JL2Yi8oH6fHjDKwshyUl56L2IMROMe4i4/vt/LtAz+ssmQRcDis8NQy7wZJvkqX/iJgXm9MmSLBSIXVSxolH2MTo4OO5G9fdLie/QTJM0l2SIIZrGu9bhysww/qqrsM79w4sTQJa7M0j2yrLdFaij5V8AP6aTU/eBbKGHtdTnq6tDsf+MaQIDAQAB",
+        "bit_length": 0,
+        "key_type": "RSA"
+      },
+      "x509": true,
+      "issuer": {
+        "country": [
+          "US"
+        ],
+        "common_name": "YR1",
+        "organization": [
+          "Let's Encrypt"
+        ]
+      },
+      "subject": {
+        "common_name": "*.haltungskompass.de"
+      },
+      "not_before": 1784305657,
+      "not_after": 1792081656,
+      "serial_number": "442472312700840680367125641961669287400489",
+      "dns_names": [
+        "*.haltungskompass.de",
+        "*.norma-gewinnspiel.de",
+        "*.norma-online.at",
+        "*.norma-online.com",
+        "*.norma-online.cz",
+        "*.norma-online.de",
+        "*.norma-online.fr",
+        "*.norma.at",
+        "*.norma.fr",
+        "haltungskompass.de",
+        "inorma.de",
+        "norma-gewinnspiel.de",
+        "norma-online.at",
+        "norma-online.com",
+        "norma-online.cz",
+        "norma-online.de",
+        "norma-online.fr",
+        "norma.at",
+        "norma.fr"
+      ],
+      "fingerprints": {
+        "md5": "d91f50a0ca3e08194260c809340560ef",
+        "sha256": "9d6c70623907d93f6c6056d6d59e30a717190aee6d2ff5320595fbe7bb9c293f",
+        "sha1": "764129296e8394d1d13c7514fae7e3be3320156e"
+      },
+      "precert": true,
+      "subject_key_id": "JoejYv6S79RntuAB3mxsvVxPIjs="
+    }
+  ],
+  "endpoint": "/v1/domain/norma.fr/ssl",
+  "record_count": 0
+}

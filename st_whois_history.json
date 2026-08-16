@@ -1,0 +1,61 @@
+{
+  "result": {
+    "count": 1,
+    "items": [
+      {
+        "contact": [
+          {
+            "country": "FRANCE",
+            "email": "norma@media-net.fr",
+            "fax": "33 3 88 39 27 94",
+            "name": "Robert Tjon",
+            "street1": "Norma",
+            "street2": "9, rue de Rochefort",
+            "street3": "67000 Strasbourg",
+            "telephone": "33 3 88 39 82 72",
+            "type": "administrativeContact"
+          },
+          {
+            "country": "FRANCE",
+            "email": "afnic@diatem.net",
+            "fax": "33 3 88 22 26 92",
+            "name": "Mathieu Haller",
+            "street1": "DIATEM",
+            "street2": "21, avenue de l'Europe",
+            "street3": "67300 Schiltigheim",
+            "street4": "DIATEM",
+            "telephone": "33 3 88 22 74 20",
+            "type": "technicalContact"
+          },
+          {
+            "country": "FRANCE",
+            "organization": "Norma",
+            "street1": "9, rue de Rochefort",
+            "street2": "67000 Strasbourg",
+            "type": "registrant"
+          }
+        ],
+        "createdDate": 1444089600000,
+        "domain": "norma.fr",
+        "ended": 1444089600000,
+        "expiresDate": 0,
+        "full_domain": "norma.fr",
+        "gtld": true,
+        "nameServers": [
+          "ns1.diatem.net",
+          "ns2.diatem.net",
+          "ns3.diatem.fr",
+          "95.130.153.38"
+        ],
+        "private_registration": false,
+        "registrarName": "DIATEM",
+        "started": 1444089600000,
+        "status": [
+          "active"
+        ],
+        "updatedDate": 1518814800000
+      }
+    ]
+  },
+  "endpoint": "/v1/history/norma.fr/whois"
+}

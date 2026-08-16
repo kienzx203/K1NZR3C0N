@@ -1,0 +1,59 @@
+{
+  "status": "Active associated",
+  "domain": "norma.fr",
+  "endpoint": "/v1/domain/norma.fr/whois",
+  "createdDate": "1997-10-26T00:00:00Z",
+  "expiresDate": "2026-10-21T00:00:00Z",
+  "registrarName": "DIATEM",
+  "contacts": [
+    {
+      "city": null,
+      "country": "France",
+      "countryCode": "FR",
+      "email": "afnic@diatem.net",
+      "name": "Mathieu Haller",
+      "organization": "Metzger Haller",
+      "postalCode": null,
+      "state": null,
+      "street1": "2 rue de Dublin, 67300 Schiltigheim, DIATEM, 2, rue de Dublin, 67300 Schiltigheim",
+      "telephone": "+33.388227420",
+      "type": "technicalContact"
+    },
+    {
+      "city": null,
+      "country": "France",
+      "countryCode": "FR",
+      "email": "norma@media-net.fr",
+      "name": "Robert Tjon",
+      "organization": null,
+      "postalCode": null,
+      "state": null,
+      "street1": "Norma, 9, rue de Rochefort, 67000 Strasbourg",
+      "telephone": "+33.388398272",
+      "type": "administrativeContact"
+    },
+    {
+      "city": null,
+      "country": "France",
+      "countryCode": "FR",
+      "email": "afnic@diatem.net",
+      "name": null,
+      "postalCode": null,
+      "state": null,
+      "street1": "NORMA, 1, Terrasse Porte des Vosges, 57400 Sarrebourg",
+      "telephone": "+33.388227420",
+      "type": "registrant"
+    }
+  ],
+  "contactEmail": "info@diatem.net",
+  "private_registration": false,
+  "nameServers": [
+    "a1-198.akam.net",
+    "a13-67.akam.net",
+    "a18-64.akam.net",
+    "a20-65.akam.net",
+    "a24-67.akam.net",
+    "a3-67.akam.net"
+  ],
+  "updatedDate": "2025-11-30T00:00:00Z"
+}
