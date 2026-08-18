@@ -2811,12 +2811,12 @@ steps:
   skip_if_exists: true
   timeout: 2h
   run: |
-    test -s {workspace}/live_urls.txt || { touch {workspace}/afrog.jsonl; exit 0; }
+    test -s {workspace}/live_urls.txt || { touch {workspace}/afrog.json; exit 0; }
     printf 'afrog: %s live URLs — PoC scan (critical/high/medium)\n' "$(wc -l < {workspace}/live_urls.txt)"
     afrog -T {workspace}/live_urls.txt -S critical,high,medium \
-      -j {workspace}/afrog.jsonl -silent 2>{workspace}/afrog_stderr.log || true
-    touch {workspace}/afrog.jsonl
-    printf 'afrog findings: %s\n' "$(wc -l < {workspace}/afrog.jsonl)"
+      -j {workspace}/afrog.json -silent 2>{workspace}/afrog_stderr.log || true
+    touch {workspace}/afrog.json
+    printf 'afrog findings: %s\n' "$(grep -o '"fulltarget"' {workspace}/afrog.json | wc -l)"
   outputs:
     afrog_jsonl: '{workspace}/afrog.jsonl'
 - id: nuclei_naabu_ports
